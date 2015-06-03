@@ -1,7 +1,8 @@
-
 /* create table scaffold as
  select distinct patient_num,start_date from observation_fact
  order by patient_num,start_date;
+ 
+ Just adding a few test comments to see if they show up in my 'comments' branch.
 */
 
 -- this maps concept_path to all its contained concept_cds and their data domains
