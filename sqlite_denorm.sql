@@ -1,13 +1,23 @@
 /* create table scaffold as
  select distinct patient_num,start_date from observation_fact
  order by patient_num,start_date;
- 
- Just adding a few test comments to see if they show up in my 'comments' branch.
+A CTE is a 'common table expression'. CTE's act like temporary views that only exist for the duration of a single SQL
+statement (i.e. "SELECT") and are not stored as a variable. 
+CTEs can be "ordinary" or "recursive." 
+"ordinary" CTEs make queries easier to understand by factoring subqueries out of a SQL statement.
+"recursive" CTEs allow hierarchical or recursive queries of trees and graphs
+All CTE's are created by prepending a WITH clause in front of a SELECT, INSERT, DELETE, or UPDATE statement.
+
 */
 
 -- this maps concept_path to all its contained concept_cds and their data domains
 -- select distinct vr.*,concept_cd,substr(concept_cd,1,instr(concept_cd,':')) ddomain 
 -- from variable vr join concept_dimension cd on cd.concept_path like vr.concept_path||'%';
+
+
+--use WITH clause to run a query recursively that will produce a temporary common table expression (CTE)
+--This CTE will be called "var" with four headers: concept_path, concept_cd, ddomain, and vid)
+
 with recursive 
 var(concept_path,concept_cd,ddomain,vid) as (
 select distinct vr.concept_path,concept_cd,substr(concept_cd,1,instr(concept_cd,':')) ddomain, id
