@@ -15,6 +15,11 @@ args = parser.parse_args()
 def main(sqlscript, dbfile):
     con = sq.connect(dbfile)
     cur = con.cursor()
+    # TODO: instead of relying on sqlite_denorm.sql, create the scaffold table from inside this 
+    # script by putting the appropriate SQL commands into character strings and then passing those
+    # strings as arguments to execute() (and capturing the result in a new variable, see below
+    # for an example of cur.execute() usage (cur just happens to be what we named the cursor 
+    # object we created above, and execute() is a method that cursor objects have)
     # TODO: instead of a with-clause temp-table create a static data dictionary table
     #		var(concept_path,concept_cd,ddomain,vid) but filter out certain facts 
     #		redundant with PATIENT_DIMENSION
