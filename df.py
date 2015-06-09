@@ -32,3 +32,14 @@ Return them in their original order of ocurrence. When there are ties, take the 
 For every word of length ii, add ii to the score, an at the same time pop the largest index out of the array
 When score exceeds target length, break out of the loop before popping the corresponding index
 Order the indexes and extract the corresponding words"""
+wrds = 'Closed treatment of distal radial fracture (eg, Colles or Smith type) or epiphyseal separation, includes closed treatment of fracture of ulnar styloid, when performed; without manipulation'.split()
+lens = map(len,wrds);idxs=range(len(lens));idxs.sort(key=lambda xx: lens[xx]);lens.sort();keep=[];sumidx=0
+while sumidx < 40:
+	sumidx += lens.pop()
+	keep.append(idxs.pop())
+
+keep.sort()
+shortened = [wrds[ii] for ii in keep]
+print re.sub(r"([a-z])\1",r"\1",re.sub("\B[aeiouyAEIOUY]+","",re.sub("[^a-zA-Z0-9 _]","","_".join(shortened))))
+
+
