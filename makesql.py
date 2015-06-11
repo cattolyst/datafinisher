@@ -100,9 +100,10 @@ def main(sqlscript, dbfile):
 
     print "Creating dynamic SQL for CODEFACTS"
     cur.execute("select group_concat(colid) from data_dictionary where rule = 'code'")
+    codesel = cur.fetchone()[0]
     # dynamically generate the terms in the select statement
     # extract the terms that meet the above criterion
-    codeqry = "create table if not exists codefacts as select scaffold.*,"+cur.fetchone()[0]+" from scaffold "
+    codeqry = "create table if not exists codefacts as select scaffold.*,"+codesel+" from scaffold "
     # now dynamically generate the many, many join clauses and append them to codefacts
     # note the string replace-- cannot alias the table name in an update statement, so no dd
     cur.execute("""
@@ -120,7 +121,8 @@ def main(sqlscript, dbfile):
     print "Creating dynamic SQL for CODEMODFACTS"
     # select terms...
     cur.execute("select group_concat(colid) from data_dictionary where rule = 'codemod'")
-    codemodqry = "create table if not exists codemodfacts as select scaffold.*,"+cur.fetchone()[0]+" from scaffold "
+    codemodsel = cur.fetchone()[0]
+    codemodqry = "create table if not exists codemodfacts as select scaffold.*,"+codemodsel+" from scaffold "
     # ...and joins...
     cur.execute("""
         select ' left join (select patient_num,date(start_date) sd
@@ -151,10 +153,10 @@ def main(sqlscript, dbfile):
 	(case when valtype_cd is null then '' else ','||colid||'_typ' end )||
 	(case when nval_num is null then '' else ','||colid end)
 	from data_dictionary where rule = 'oneperday'""")
-    oneperdayqry = "create table if not exists oneperdayfacts as select scaffold.*"
+    oneperdaysel = " ".join([row[0] for row in cur.fetchall()])
+    oneperdayqry = "create table if not exists oneperdayfacts as select scaffold.*" + oneperdaysel + " from scaffold "
     # since we're doing ALL the non-aggregate columns at the same time, the above query is designed
     # to produce multiple rows, so we change the earlier pattern slightly so we can glue them all together
-    oneperdayqry += " ".join([row[0] for row in cur.fetchall()])+" from scaffold "
     # joins
     cur.execute("""
 	select 'left join (select patient_num,start_date'||
@@ -199,10 +201,20 @@ def main(sqlscript, dbfile):
     print "Creating UNKFACTS table"
     cur.execute(unkqry1)
     print "Creating FULLOUTPUT table"
-    # TODO: except we don't actually do it yet-- need to play with the variables and see the cleanest way to merge
+    # DONE: except we don't actually do it yet-- need to play with the variables and see the cleanest way to merge
     # the individual tables together
+    # TODO: revise for consistent use of commas
+    allsel = codesel+','+codemodsel+oneperdaysel+','+unkqryvars[0]
+    allqry = "create table if not exists fulloutput as select scaffold.*,"+allsel
+    allqry += """ from scaffold 
+    left join codefacts cf on cf.patient_num = scaffold.patient_num and cf.start_date = scaffold.start_date 
+    left join codemodfacts cmf on cmf.patient_num = scaffold.patient_num and cmf.start_date = scaffold.start_date 
+    left join oneperdayfacts one on one.patient_num = scaffold.patient_num and one.start_date = scaffold.start_date 
+    left join unkfacts unk on unk.patient_num = scaffold.patient_num and unk.start_date = scaffold.start_date 
+    order by patient_num, start_date"""
+    cur.execute(allqry)
     # TODO: create a view that replaces the various strings with simple 1/0 values
-    #import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     
     # Boom! We covered all the cases. Messy, but at least a start.
 
