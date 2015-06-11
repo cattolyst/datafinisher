@@ -1,6 +1,6 @@
 """ Generate dynamic data extraction SQL for DataBuilder output files
 ---------------------------------------------------------------------
-
+    
  Usage:
    makesql sqltemplate.sql dbname.db
 """
@@ -20,11 +20,11 @@ def main(sqlscript, dbfile):
     cur = con.cursor()
     # TODO (ticket #1): instead of relying on sqlite_denorm.sql, create the scaffold table from inside this 
     # script by putting the appropriate SQL commands into character strings and then passing those
-    # strings as arguments to execute() (and capturing the result in a new variable, see below
-    # for an example of cur.execute() usage (cur just happens to be what we named the cursor 
-    # object we created above, and execute() is a method that cursor objects have)
+    # strings as arguments to execute() (see below for an example of cur.execute() usage (cur just happens 
+    # to be what we named the cursor object we created above, and execute() is a method that cursor objects have)
     # DONE: create an id to concept_cd mapping table (and filtering out redundant facts taken care of here)
     # TODO: parameterize the fact-filtering 
+    print "Creating cdid table"
     cur.execute("drop table if exists cdid")
     cur.execute("""
 	create table cdid as
@@ -35,30 +35,140 @@ def main(sqlscript, dbfile):
 	group by item_key) vr
 	on cd.concept_path like vr.concept_path||'%'
 	""")
-    # TODO: instead of a with-clause temp-table create a static data dictionary table
+    # create a couple of cleaned-up views of observation_fact
+    # replace most of the non-informative values with nulls, remove certain known redundant modifiers
+    print "Creating obs_all and obs_noins views"
+    cur.execute("drop view if exists obs_all")
+    cur.execute("""
+	create view obs_all as
+	select distinct patient_num,concept_cd,date(start_date) start_date,modifier_cd
+	,case when valtype_cd in ('@','') then null else valtype_cd end valtype_cd
+	,instance_num
+	,case when tval_char in ('@','') then null else tval_char end tval_char
+	,nval_num
+	,case when valueflag_cd in ('@','') then null else valueflag_cd end valueflag_cd
+	,quantity_num
+	,units_cd,location_cd,confidence_num from observation_fact
+	where modifier_cd not in ('Labs|Aggregate:Last','Labs|Aggregate:Median','PROCORDERS:Outpatient','DiagObs:PROBLEM_LIST')
+	and concept_cd not like 'DEM|AGEATV:%' and concept_cd not like 'DEM|SEX:%' and concept_cd not like 'DEM|VITAL:%'
+	""");
+    cur.execute("drop view if exists obs_noins")
+    cur.execute("""
+	create view obs_noins as 
+	select distinct patient_num,concept_cd,date(start_date) start_date,modifier_cd
+	,case when valtype_cd in ('@','') then null else valtype_cd end valtype_cd
+	,case when tval_char in ('@','') then null else tval_char end tval_char
+	,nval_num
+	,case when valueflag_cd in ('@','') then null else valueflag_cd end valueflag_cd
+	,quantity_num
+	,units_cd,location_cd,confidence_num from observation_fact
+	where modifier_cd not in ('Labs|Aggregate:Last','Labs|Aggregate:Median','PROCORDERS:Outpatient','DiagObs:PROBLEM_LIST')
+	and concept_cd not like 'DEM|AGEATV:%' and concept_cd not like 'DEM|SEX:%' and concept_cd not like 'DEM|VITAL:%'
+	""");
+    # DONE: instead of a with-clause temp-table create a static data dictionary table
     #		var(concept_path,concept_cd,ddomain,vid) 
     # BTW, turns out this is a way to read and execute a SQL script
-    cur.execute("drop table if exists data_dictionary")
+    print "Creating DATA_DICTIONARY"
+    #cur.execute("drop table if exists data_dictionary")
     with open(ddsql,'r') as ddf:
 	ddcreate = ddf.read()
     cur.execute(ddcreate)
 
     # TODO: the shortened column names will go into this data dictionary table
-    # TODO: create a filtered static copy of OBSERVATION_FACT with a vid column, maybe others
+    # DONE: create a filtered static copy of OBSERVATION_FACT with a vid column, maybe others
+    # no vid column, relationship between concept_cd and id is not 1:1, so could get too big
+    # will instead cross-walk the cdid table as needed
     # ...but perhaps unnecessary now that cdid table exists
+    
+    # the below yeah, I guess, but there are two big and easier to implement cases to do first
+    # 1. code-only can be the same use-case for branches and leaves, the result will be the same
+    # dynamically generate the terms in the select statement
+    if cur.execute("select count(*) from sqlite_master where type = 'table' and name = 'codefacts'").fetchone()[0]==0:
+        codefacts_criteria = """
+            where coalesce(mod,dd.tval_char,dd.valueflag_cd,dd.units_cd,dd.confidence_num,
+                           dd.quantity_num,dd.location_cd,dd.valtype_cd,dd.nval_num,-1) = -1 
+            and done != 1 """
+        print "Creating dynamic SQL for CODEFACTS"
+        cur.execute("""
+            select group_concat(colid) from data_dictionary dd  
+            """+codefacts_criteria)
+        # extract the terms that meet the above criterion
+        codefacts = """create table if not exists codefacts as  
+                    select scaffold.*,"""+cur.fetchone()[0]+" from scaffold "
+        # now dynamically generate the many, many join clauses and append them to codefacts
+        cur.execute("""
+        select ' left join (select patient_num,date(start_date) sd
+        ,replace(group_concat(distinct concept_cd),'','',''; '') '||colid||' from cdid 
+        join obs_noins on ccd = concept_cd where id = '||cid||' group by patient_num
+        ,date(start_date) order by patient_num,start_date) '||colid||' 
+        on '||colid||'.patient_num = scaffold.patient_num 
+        and '||colid||'.sd = scaffold.start_date' from data_dictionary dd """+codefacts_criteria)
+        for row in cur.fetchall():
+            codefacts += row[0]
+        print "Creating CODEFACTS table"
+        #import pdb; pdb.set_trace()
+        cur.execute(codefacts) 
+        print "Updating DATA_DICTIONARY"
+        # note the string replace-- cannot alias the table name in an update statement, so no dd
+        #import pdb; pdb.set_trace()
+        cur.execute("update data_dictionary set done = 1 "+codefacts_criteria.replace('dd.',''))
+        # updates don't auto-commit, so the following line is needed to prevent above updates
+        # from being lost when this script completes running
+        con.commit()
+
+    # 2. code-mod-only slightly uglier if doesn't distinguish between branches and leaves but will
+    #    work well enough for now 
+    if cur.execute("select count(*) from sqlite_master where type = 'table' and name = 'codemodfacts'").fetchone()[0]==0:
+        # dynamically generate the terms in the select statement
+        codemodfacts_criteria = """
+            where coalesce(dd.tval_char,dd.valueflag_cd,dd.units_cd,dd.confidence_num,
+                           dd.quantity_num,dd.location_cd,dd.valtype_cd,dd.nval_num,-1) = -1 
+            and mod is not null and done != 1 """
+        print "Creating dynamic SQL for CODEMODFACTS"
+        cur.execute("""
+            select group_concat(colid) from data_dictionary dd  
+            """+codemodfacts_criteria)
+        # extract the terms that meet the above criterion
+        codemodfacts = """create table if not exists codemodfacts as  
+                    select scaffold.*,"""+cur.fetchone()[0]+" from scaffold "
+        # now dynamically generate the many, many join clauses and append them to codefacts
+        #import pdb; pdb.set_trace()
+        cur.execute("""
+        select ' left join (select patient_num,date(start_date) sd
+        ,replace(group_concat(distinct concept_cd||''=''||modifier_cd),'','',''; '') '||colid||' from cdid 
+        join obs_noins on ccd = concept_cd where id = '||cid||' group by patient_num
+        ,date(start_date) order by patient_num,start_date) '||colid||' 
+        on '||colid||'.patient_num = scaffold.patient_num 
+        and '||colid||'.sd = scaffold.start_date' from data_dictionary dd """+codemodfacts_criteria)
+        for row in cur.fetchall():
+            codemodfacts += row[0]
+        print "Creating CODEMODFACTS table"
+        #import pdb; pdb.set_trace()
+        cur.execute(codemodfacts)
+        print "Updating DATA_DICTIONARY"
+        # note the string replace-- cannot alias the table name in an update statement, so no dd
+        #import pdb; pdb.set_trace()
+        cur.execute("update data_dictionary set done = 1 "+codemodfacts_criteria.replace('dd.',''))
+        con.commit()
+
+    # next target: cid's (column id's i.e. groups of variables that were selected together by the researcher)
+    # ...cid's that have a ccd value of 1 (meaning there is only one distinct concept code per cid
+    # since these get checked after the code and code-mod groups, these are expected to be numeric variables
+    # after these are dealt with,
+    # next next target: fallback on giant messy concatenated strings for everything else (for now)
     """
     The decision process
       branch node
-	uses mods?
+	uses mods DONE
 	  map modifiers; single column of semicolon-delimited code=mod pairs
 	uses other columns?
 	  UNKNOWN FALLBACK, single column
-	code-only?
+	code-only DONE
 	  single column of semicolon-delimited codes
       leaf node
-	code only?
-	  single 1/0 column
-	uses code and mods only?
+	code only DONE
+	  single 1/0 column (TODO)
+	uses code and mods only DONE
 	  map modifiers; single column of semicolon-delimited mods
 	uses other columns?
 	  any columns besides mods have more than one value per patient-date?
