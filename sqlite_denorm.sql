@@ -19,7 +19,7 @@ CREATE TABLE
 -- uncomment the below line and run it in order to empty out the table for a fresh round of inserts
 -- delete from scaffold;
 insert into scaffold (patient_num, start_date) 
-select distinct patient_num, start_date 
+select distinct patient_num, date(start_date) start_date
 from observation_fact order by patient_num, start_date;
 
 
