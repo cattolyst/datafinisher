@@ -32,4 +32,9 @@ def dropletters(intext):
 
 if __name__ == '__main__':
     print dropletters(shortenwords('Closed treatment of distal radial fracture (eg, Colles or Smith type) or epiphyseal separation, includes closed treatment of fracture of ulnar styloid, when performed; without manipulation',50))
+    con = sq.connect('pedobese_bos.db')
+    #con.create_function("sw",2,shortenwords)
+    con.create_function("dl",1,dropletters)
+    cur = con.cursor()
+    import pdb; pdb.set_trace()
 
