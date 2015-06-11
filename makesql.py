@@ -24,7 +24,7 @@ def main(sqlscript, dbfile):
     # to be what we named the cursor object we created above, and execute() is a method that cursor objects have)
     # DONE: create an id to concept_cd mapping table (and filtering out redundant facts taken care of here)
     # TODO: parameterize the fact-filtering 
-    print "Creating cdid table"
+    print "Creating CDID table"
     cur.execute("drop table if exists cdid")
     cur.execute("""
 	create table cdid as
@@ -74,8 +74,13 @@ def main(sqlscript, dbfile):
     # DONE: instead of a with-clause temp-table create a static data dictionary table
     #		var(concept_path,concept_cd,ddomain,vid) 
     # BTW, turns out this is a way to read and execute a SQL script
+    # TODO: the shortened column names will go into this data dictionary table
+    # DONE: create a filtered static copy of OBSERVATION_FACT with a vid column, maybe others
+    # no vid column, relationship between concept_cd and id is not 1:1, so could get too big
+    # will instead cross-walk the cdid table as needed
+    # ...but perhaps unnecessary now that cdid table exists
     print "Creating DATA_DICTIONARY"
-    cur.execute("drop table if exists data_dictionary")
+    #cur.execute("drop table if exists data_dictionary")
     with open(ddsql,'r') as ddf:
 	ddcreate = ddf.read()
     cur.execute(ddcreate)
@@ -92,89 +97,125 @@ def main(sqlscript, dbfile):
         and mod is not null""")
     cur.execute("update data_dictionary set rule = 'oneperday' where mxfacts = 1 and rule = 'UNKNOWN_DATA_ELEMENT'")
     con.commit()
-    import pdb; pdb.set_trace()
 
-    # TODO: the shortened column names will go into this data dictionary table
-    # DONE: create a filtered static copy of OBSERVATION_FACT with a vid column, maybe others
-    # no vid column, relationship between concept_cd and id is not 1:1, so could get too big
-    # will instead cross-walk the cdid table as needed
-    # ...but perhaps unnecessary now that cdid table exists
-    
-    # the below yeah, I guess, but there are two big and easier to implement cases to do first
-    # 1. code-only can be the same use-case for branches and leaves, the result will be the same
+    print "Creating dynamic SQL for CODEFACTS"
+    cur.execute("select group_concat(colid) from data_dictionary where rule = 'code'")
     # dynamically generate the terms in the select statement
-    if cur.execute("select count(*) from sqlite_master where type = 'table' and name = 'codefacts'").fetchone()[0]==0:
-        codefacts_criteria = """
-            where coalesce(mod,dd.tval_char,dd.valueflag_cd,dd.units_cd,dd.confidence_num,
-                           dd.quantity_num,dd.location_cd,dd.valtype_cd,dd.nval_num,-1) = -1 
-            and done != 1 """
-        print "Creating dynamic SQL for CODEFACTS"
-        cur.execute("""
-            select group_concat(colid) from data_dictionary dd  
-            """+codefacts_criteria)
-        # extract the terms that meet the above criterion
-        codefacts = """create table if not exists codefacts as  
-                    select scaffold.*,"""+cur.fetchone()[0]+" from scaffold "
-        # now dynamically generate the many, many join clauses and append them to codefacts
-        cur.execute("""
-        select ' left join (select patient_num,date(start_date) sd
-        ,replace(group_concat(distinct concept_cd),'','',''; '') '||colid||' from cdid 
-        join obs_noins on ccd = concept_cd where id = '||cid||' group by patient_num
+    # extract the terms that meet the above criterion
+    codeqry = "create table if not exists codefacts as select scaffold.*,"+cur.fetchone()[0]+" from scaffold "
+    # now dynamically generate the many, many join clauses and append them to codefacts
+    # note the string replace-- cannot alias the table name in an update statement, so no dd
+    cur.execute("""
+	select ' left join (select patient_num,date(start_date) sd
+	,replace(group_concat(distinct concept_cd),'','',''; '') '||colid||' from cdid 
+	join obs_noins on ccd = concept_cd where id = '||cid||' group by patient_num
         ,date(start_date) order by patient_num,start_date) '||colid||' 
         on '||colid||'.patient_num = scaffold.patient_num 
-        and '||colid||'.sd = scaffold.start_date' from data_dictionary dd """+codefacts_criteria)
-        for row in cur.fetchall():
-            codefacts += row[0]
-        print "Creating CODEFACTS table"
-        #import pdb; pdb.set_trace()
-        cur.execute(codefacts) 
-        print "Updating DATA_DICTIONARY"
-        # note the string replace-- cannot alias the table name in an update statement, so no dd
-        #import pdb; pdb.set_trace()
-        cur.execute("update data_dictionary set done = 1 "+codefacts_criteria.replace('dd.',''))
-        # updates don't auto-commit, so the following line is needed to prevent above updates
-        # from being lost when this script completes running
-        con.commit()
+        and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule = 'code'""")
+    codeqry += " ".join([row[0] for row in cur.fetchall()])
+    print "Creating CODEFACTS table"
+    cur.execute(codeqry) 
+    # same pattern as above, but now for facts that consist of both codes and modifiers
 
-    # 2. code-mod-only slightly uglier if doesn't distinguish between branches and leaves but will
-    #    work well enough for now 
-    if cur.execute("select count(*) from sqlite_master where type = 'table' and name = 'codemodfacts'").fetchone()[0]==0:
-        # dynamically generate the terms in the select statement
-        codemodfacts_criteria = """
-            where coalesce(dd.tval_char,dd.valueflag_cd,dd.units_cd,dd.confidence_num,
-                           dd.quantity_num,dd.location_cd,dd.valtype_cd,dd.nval_num,-1) = -1 
-            and mod is not null and done != 1 """
-        print "Creating dynamic SQL for CODEMODFACTS"
-        cur.execute("""
-            select group_concat(colid) from data_dictionary dd  
-            """+codemodfacts_criteria)
-        # extract the terms that meet the above criterion
-        codemodfacts = """create table if not exists codemodfacts as  
-                    select scaffold.*,"""+cur.fetchone()[0]+" from scaffold "
-        # now dynamically generate the many, many join clauses and append them to codefacts
-        #import pdb; pdb.set_trace()
-        cur.execute("""
+    print "Creating dynamic SQL for CODEMODFACTS"
+    # select terms...
+    cur.execute("select group_concat(colid) from data_dictionary where rule = 'codemod'")
+    codemodqry = "create table if not exists codemodfacts as select scaffold.*,"+cur.fetchone()[0]+" from scaffold "
+    # ...and joins...
+    cur.execute("""
         select ' left join (select patient_num,date(start_date) sd
         ,replace(group_concat(distinct concept_cd||''=''||modifier_cd),'','',''; '') '||colid||' from cdid 
         join obs_noins on ccd = concept_cd where id = '||cid||' group by patient_num
         ,date(start_date) order by patient_num,start_date) '||colid||' 
         on '||colid||'.patient_num = scaffold.patient_num 
-        and '||colid||'.sd = scaffold.start_date' from data_dictionary dd """+codemodfacts_criteria)
-        for row in cur.fetchall():
-            codemodfacts += row[0]
-        print "Creating CODEMODFACTS table"
-        #import pdb; pdb.set_trace()
-        cur.execute(codemodfacts)
-        print "Updating DATA_DICTIONARY"
-        # note the string replace-- cannot alias the table name in an update statement, so no dd
-        #import pdb; pdb.set_trace()
-        cur.execute("update data_dictionary set done = 1 "+codemodfacts_criteria.replace('dd.',''))
-        con.commit()
+        and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule = 'codemod'""")
+    codemodqry += " ".join([row[0] for row in cur.fetchall()])
+    print "Creating CODEMODFACTS table"
+    cur.execute(codemodqry)
+    
+    # any variable that doesn't have multiple values on the same day 
+    # (except multiple instances of numeric variables which get averaged)
+    # TODO: create a column in obs_noins with a count of duplicates that got averaged, for QC
+    print "Creating dynamic SQL for ONEPERDAY"
+    # here are the select terms, but a little more complicated than in the above cases
+    # on the fence whether to have extra column for the code
+    # ','||colid||'_cd'||
+    cur.execute("""select 
+	(case when mod is null then '' else ','||colid||'_mod' end)||
+	(case when tval_char is null then '' else ','||colid||'_txt' end )||
+	(case when valueflag_cd is null then '' else ','||colid||'_flg' end )||
+	(case when units_cd is null then '' else ','||colid||'_unt' end )||
+	(case when confidence_num is null then '' else ','||colid||'_cnf' end )||
+	(case when quantity_num is null then '' else ','||colid||'_qnt' end )||
+	(case when location_cd is null then '' else ','||colid||'_loc' end )||
+	(case when valtype_cd is null then '' else ','||colid||'_typ' end )||
+	(case when nval_num is null then '' else ','||colid end)
+	from data_dictionary where rule = 'oneperday'""")
+    oneperdayqry = "create table if not exists oneperdayfacts as select scaffold.*"
+    # since we're doing ALL the non-aggregate columns at the same time, the above query is designed
+    # to produce multiple rows, so we change the earlier pattern slightly so we can glue them all together
+    oneperdayqry += " ".join([row[0] for row in cur.fetchall()])+" from scaffold "
+    # joins
+    cur.execute("""
+	select 'left join (select patient_num,start_date'||
+	(case when mod is null then '' else ',modifier_cd '||colid||'_mod ' end)||
+	(case when tval_char is null then '' else ',tval_char '||colid||'_txt ' end )||
+	(case when valueflag_cd is null then '' else ',valueflag_cd '||colid||'_flg ' end )||
+	(case when units_cd is null then '' else ',units_cd '||colid||'_unt ' end )||
+	(case when confidence_num is null then '' else ',confidence_num '||colid||'_cnf ' end )||
+	(case when quantity_num is null then '' else ',quantity_num '||colid||'_qnt ' end )||
+	(case when location_cd is null then '' else ',location_cd '||colid||'_loc ' end )||
+	(case when valtype_cd is null then '' else ',valtype_cd '||colid||'_typ ' end )||
+	(case when nval_num is null then '' else ',nval_num '||colid end)||
+	' from obs_noins join cdid on ccd = concept_cd where id = '||cid||') '||colid||
+	' on '||colid||'.start_date = scaffold.start_date and '||
+	colid||'.patient_num = scaffold.patient_num'
+	from data_dictionary where rule = 'oneperday'""")
+    oneperdayqry += " ".join([row[0] for row in cur.fetchall()])
+    print "Creating ONEPERDAYFACTS table"
+    cur.execute(oneperdayqry)
+    
+    print "Creating dynamic SQL for UNKTEMP and UNKFACTS tables"
+    cur.execute("""select group_concat(colid),
+	group_concat('left join (select patient_num pn,start_date sd,megacode '||colid||
+	    ' from unktemp where id = '||cid||') '||colid||' on '||colid||'.pn = patient_num 
+	      and '||colid||'.sd = start_date ',' '),
+	group_concat(cid) from data_dictionary where rule = 'UNKNOWN_DATA_ELEMENT'""")
+    unkqryvars = cur.fetchone()
+    unkqry0 = """create table if not exists unktemp as 
+	select patient_num,date(start_date) start_date,id
+	,group_concat(distinct concept_cd||coalesce('&mod='||modifier_cd,'')||
+	coalesce('&ins='||instance_num,'')||coalesce('&typ='||valtype_cd,'')||
+	coalesce('&txt='||tval_char,'')||coalesce('&num='||nval_num,'')||
+	coalesce('&flg='||valueflag_cd,'')||coalesce('&qty='||quantity_num,'')||
+	coalesce('&unt='||units_cd,'')||coalesce('&loc='||location_cd,'')||
+	coalesce('&cnf='||confidence_num,'')) megacode
+	from obs_all join cdid on concept_cd = ccd
+	where id in ("""+unkqryvars[2]+") group by patient_num,start_date,id"
+    unkqry1 = "create table if not exists unkfacts as select scaffold.*,"+unkqryvars[0]+" from scaffold "
+    unkqry1 += unkqryvars[1]
+    print "Creating UNKTEMP table"
+    cur.execute(unkqry0)
+    print "Creating UNKFACTS table"
+    cur.execute(unkqry1)
+    print "Creating FULLOUTPUT table"
+    # TODO: except we don't actually do it yet-- need to play with the variables and see the cleanest way to merge
+    # the individual tables together
+    # TODO: create a view that replaces the various strings with simple 1/0 values
+    #import pdb; pdb.set_trace()
+    
+    # Boom! We covered all the cases. Messy, but at least a start.
 
-    # next target: cid's (column id's i.e. groups of variables that were selected together by the researcher)
+    # the below yeah, I guess, but there are two big and easier to implement cases to do first
+    # 1. code-only can be the same use-case for branches and leaves, the result will be the same
+    # 2. code-mod-only slightly uglier if doesn't distinguish between branches and leaves but will
+    #    work well enough for now 
+
+    # DONE: cid's (column id's i.e. groups of variables that were selected together by the researcher)
     # ...cid's that have a ccd value of 1 (meaning there is only one distinct concept code per cid
     # since these get checked after the code and code-mod groups, these are expected to be numeric variables
     # after these are dealt with,
+
     # next next target: fallback on giant messy concatenated strings for everything else (for now)
     """
     The decision process
@@ -182,19 +223,19 @@ def main(sqlscript, dbfile):
 	uses mods DONE
 	  map modifiers; single column of semicolon-delimited code=mod pairs
 	uses other columns?
-	  UNKNOWN FALLBACK, single column
+	  UNKNOWN FALLBACK, single column DONE
 	code-only DONE
 	  single column of semicolon-delimited codes
       leaf node
 	code only DONE
 	  single 1/0 column (TODO)
 	uses code and mods only DONE
-	  map modifiers; single column of semicolon-delimited mods
+	  map modifiers; single column of semicolon-delimited mods DONE-ish
 	uses other columns?
 	  any columns besides mods have more than one value per patient-date?
-	    UNKNOWN FALLBACK, single column
+	    UNKNOWN FALLBACK, single column DONE-ish
 	  otherwise
-	    map modifiers; single column of semicolon-delimited mods named FOO_mod; for each additional BAR, one more column FOO_BAR
+	    map modifiers; single column of semicolon-delimited mods named FOO_mod; for each additional BAR, one more column FOO_BAR DONE-ish
     
     TODO: implement a user-configurable 'rulebook' containing patterns for catching data that would otherwise fall 
     into UNKNOWN FALLBACK, and expressing in a parseable form what to do when each rule is triggered.
@@ -202,33 +243,6 @@ def main(sqlscript, dbfile):
     We are probably looking at several different 'dcat' style tables, broken up by type of data
     TODO: We will iterate through the data dictionary, joining new columns to the result according to the applicable rule
     """
-    # read in the SQLscript
-    # use dbfile to generate lines to append to it
-    # initialize the strings that will hold temp tables, selected columns, and joins
-    tt = ''; sl = ''; js = ''
-    # build a SQL query that, in one shot, returns the columns tt, sl, and js
-    dynquery = \
-        "select 'v'||substr('000'||id,-3,3)||'(pn, st, datconcat) " + \
-        "as (select pn, st, datconcat from dcat2 where vid = '||id||')' tt," + \
-        "'v'||substr('000'||id,-3,3)||'.datconcat v'||substr('000'||id,-3,3) sel," + \
-        "'left join v'||substr('000'||id,-3,3)||' " + \
-        "on v'||substr('000'||id,-3,3)||'.pn = patient_num " + \
-        "and v'||substr('000'||id,-3,3)||'.st = start_date' js " + \
-        "from variable where lower(name) not like '%old at visit' and name not in ('Living','Female','Male')"
-    cur.execute(dynquery)
-    rows = cur.fetchall()
-    for row in rows[5:10]:
-        tt += row[0]+','
-        sl += row[1]+','
-        js += row[2]+' '
-    print "TEMP TABLE"
-    print tt[:-1]
-    print ' select patient_num, start_date,'
-    print sl[:-1]
-    print ' from scaffold '
-    print js[:-1]
-    # TODO: read in sqlscript, append these things to it, and run it, probably in chunks
-
 if __name__ == '__main__':
     main(args.sqlscript,args.dbfile)
 

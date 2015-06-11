@@ -1,5 +1,8 @@
 create table if not exists data_dictionary as 
-select cdid.*,mxinsts,mxfacts,'v'||substr('000'||cid,-3,3) colid,concept_path,name,mod,tval_char,nval_num,valueflag_cd,units_cd,confidence_num,quantity_num,location_cd,valtype_cd,0 done
+select cdid.*,mxinsts,mxfacts,'v'||substr('000'||cid,-3,3) colid
+,concept_path,name,mod,tval_char,nval_num,valueflag_cd,units_cd,confidence_num
+,quantity_num,location_cd,valtype_cd,0 done
+,'UNKNOWN_DATA_ELEMENT' rule
 from (select id cid,group_concat(distinct ddomain) ddomain,count(distinct ccd) ccd from cdid group by id) cdid
 left join variable on cid = variable.id
 left join (
