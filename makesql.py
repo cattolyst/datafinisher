@@ -53,8 +53,14 @@ def main(sqlscript, dbfile):
 	and concept_cd not like 'DEM|AGEATV:%' and concept_cd not like 'DEM|SEX:%' and concept_cd not like 'DEM|VITAL:%'
 	""");
     cur.execute("drop view if exists obs_noins")
+    # it would be better to aggregate multiple numeric values of the same fact collected on the same day by median, but alas
+    # not all versions of SQLite have support for the median function
     cur.execute("""
 	create view obs_noins as 
+        select patient_num,concept_cd,start_date,modifier_cd,valtype_cd,tval_char,avg(nval_num) nval_num
+        ,group_concat(distinct valueflag_cd) valueflag_cd,group_concat(distinct quantity_num) quantity_num
+        ,units_cd,group_concat(distinct location_cd) location_cd
+        ,group_concat(distinct confidence_num) confidence_num from (
 	select distinct patient_num,concept_cd,date(start_date) start_date,modifier_cd
 	,case when valtype_cd in ('@','') then null else valtype_cd end valtype_cd
 	,case when tval_char in ('@','') then null else tval_char end tval_char
@@ -64,15 +70,29 @@ def main(sqlscript, dbfile):
 	,units_cd,location_cd,confidence_num from observation_fact
 	where modifier_cd not in ('Labs|Aggregate:Last','Labs|Aggregate:Median','PROCORDERS:Outpatient','DiagObs:PROBLEM_LIST')
 	and concept_cd not like 'DEM|AGEATV:%' and concept_cd not like 'DEM|SEX:%' and concept_cd not like 'DEM|VITAL:%'
-	""");
+        ) group by patient_num,concept_cd,start_date,modifier_cd,units_cd""");
     # DONE: instead of a with-clause temp-table create a static data dictionary table
     #		var(concept_path,concept_cd,ddomain,vid) 
     # BTW, turns out this is a way to read and execute a SQL script
     print "Creating DATA_DICTIONARY"
-    #cur.execute("drop table if exists data_dictionary")
+    cur.execute("drop table if exists data_dictionary")
     with open(ddsql,'r') as ddf:
 	ddcreate = ddf.read()
     cur.execute(ddcreate)
+    # rather than running the same complicated select statement multiple times for each rule in data_dictionary
+    # lets just run each selection criterion once and save it as a tag in the new RULE column
+    print "Creating rules in DATA_DICTIONARY"
+    cur.execute("""
+        update data_dictionary set rule = 'code' where
+        coalesce(mod,tval_char,valueflag_cd,units_cd,confidence_num,quantity_num,location_cd,valtype_cd,nval_num,-1) = -1
+        """)
+    cur.execute("""
+        update data_dictionary set rule = 'codemod' where
+        coalesce(tval_char,valueflag_cd,units_cd,confidence_num,quantity_num,location_cd,valtype_cd,nval_num,-1) = -1
+        and mod is not null""")
+    cur.execute("update data_dictionary set rule = 'oneperday' where mxfacts = 1 and rule = 'UNKNOWN_DATA_ELEMENT'")
+    con.commit()
+    import pdb; pdb.set_trace()
 
     # TODO: the shortened column names will go into this data dictionary table
     # DONE: create a filtered static copy of OBSERVATION_FACT with a vid column, maybe others
