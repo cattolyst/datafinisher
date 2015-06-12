@@ -5,7 +5,7 @@
    makesql sqltemplate.sql dbname.db
 """
 
-import sqlite3 as sq,argparse
+import sqlite3 as sq,argparse,re
 
 parser = argparse.ArgumentParser()
 parser.add_argument("sqlscript",help="File containing the static portion of the main SQL script")
@@ -15,26 +15,47 @@ args = parser.parse_args()
 # location of data dictionary sql file
 ddsql = "sql/dd.sql"
 
+# this is to register a SQLite function for pulling out matching substrings (if found)
+# and otherwise returning the original string. Useful for extracting ICD9, CPT, and LOINC codes
+# from concept paths where they are embedded. For ICD9 the magic pattern is:
+# '.*\\\\([VE0-9]{3}\.{0,1}[0-9]{0,2})\\\\.*'
+def ifgrp(pattern,txt):
+    rs = re.search(re.compile(pattern),txt)
+    if rs == None:
+      return txt 
+    else:
+      return rs.group(1)
+
+
 def main(sqlscript, dbfile):
     con = sq.connect(dbfile)
     cur = con.cursor()
+    con.create_function("grs",2,ifgrp)
+    #icd9grep = '.*\\\\([VE0-9]{3}\.{0,1}[0-9]{0,2})\\\\.*'
+    # not quite foolproof-- still pulls in PROCID's, but in the final version we'll be filtering on this
+    icd9grep = '.*\\\\([VE0-9]{3}(\\.[0-9]{0,2}){0,1})\\\\.*'
     # TODO (ticket #1): instead of relying on sqlite_denorm.sql, create the scaffold table from inside this 
     # script by putting the appropriate SQL commands into character strings and then passing those
     # strings as arguments to execute() (see below for an example of cur.execute() usage (cur just happens 
     # to be what we named the cursor object we created above, and execute() is a method that cursor objects have)
     # DONE: create an id to concept_cd mapping table (and filtering out redundant facts taken care of here)
     # TODO: parameterize the fact-filtering 
+    # TODO: once the next family of codes gets implemented, we'll probably have to update cdid with each in turn
     print "Creating CDID table"
     cur.execute("drop table if exists cdid")
     cur.execute("""
 	create table cdid as
-	select distinct concept_cd ccd,substr(concept_cd,1,instr(concept_cd,':')-1) ddomain,id from concept_dimension cd 
+	select distinct concept_cd ccd,id
+	,substr(concept_cd,1,instr(concept_cd,':')-1) ddomain
+	,grs('"""+icd9grep+"""',cd.concept_path) cpath
+	from concept_dimension cd 
 	join (select min(id) id,min(concept_path) concept_path 
 	from variable 
 	where name not like '%old at visit' and name not in ('Living','Deceased','Not recorded','Female','Male','Unknown')
 	group by item_key) vr
 	on cd.concept_path like vr.concept_path||'%'
 	""")
+    import pdb; pdb.set_trace()
     # create a couple of cleaned-up views of observation_fact
     # replace most of the non-informative values with nulls, remove certain known redundant modifiers
     print "Creating obs_all and obs_noins views"
@@ -135,8 +156,11 @@ def main(sqlscript, dbfile):
     print "Creating CODEMODFACTS table"
     cur.execute(codemodqry)
     
+    # DONE: cid's (column id's i.e. groups of variables that were selected together by the researcher)
+    # ...cid's that have a ccd value of 1 (meaning there is only one distinct concept code per cid
     # any variable that doesn't have multiple values on the same day 
-    # (except multiple instances of numeric variables which get averaged)
+    # (except multiple instances of numeric values which get averaged)
+    # these are expected to be numeric variables
     # TODO: create a column in obs_noins with a count of duplicates that got averaged, for QC
     print "Creating dynamic SQL for ONEPERDAY"
     # here are the select terms, but a little more complicated than in the above cases
@@ -177,6 +201,7 @@ def main(sqlscript, dbfile):
     print "Creating ONEPERDAYFACTS table"
     cur.execute(oneperdayqry)
     
+    # DONE: fallback on giant messy concatenated strings for everything else (for now)
     print "Creating dynamic SQL for UNKTEMP and UNKFACTS tables"
     cur.execute("""select group_concat(colid),
 	group_concat('left join (select patient_num pn,start_date sd,megacode '||colid||
@@ -200,6 +225,7 @@ def main(sqlscript, dbfile):
     cur.execute(unkqry0)
     print "Creating UNKFACTS table"
     cur.execute(unkqry1)
+
     print "Creating FULLOUTPUT table"
     # DONE: except we don't actually do it yet-- need to play with the variables and see the cleanest way to merge
     # the individual tables together
@@ -218,17 +244,8 @@ def main(sqlscript, dbfile):
     
     # Boom! We covered all the cases. Messy, but at least a start.
 
-    # the below yeah, I guess, but there are two big and easier to implement cases to do first
-    # 1. code-only can be the same use-case for branches and leaves, the result will be the same
-    # 2. code-mod-only slightly uglier if doesn't distinguish between branches and leaves but will
-    #    work well enough for now 
+    # the below yeah, I guess, but above are two big and easier to implement cases to do first
 
-    # DONE: cid's (column id's i.e. groups of variables that were selected together by the researcher)
-    # ...cid's that have a ccd value of 1 (meaning there is only one distinct concept code per cid
-    # since these get checked after the code and code-mod groups, these are expected to be numeric variables
-    # after these are dealt with,
-
-    # next next target: fallback on giant messy concatenated strings for everything else (for now)
     """
     The decision process
       branch node
