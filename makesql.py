@@ -20,6 +20,7 @@ ddsql = "sql/dd.sql"
 # '.*\\\\([VE0-9]{3}\.{0,1}[0-9]{0,2})\\\\.*'
 def ifgrp(pattern,txt):
     rs = re.search(re.compile(pattern),txt)
+    
     if rs == None:
       return txt 
     else:
@@ -33,6 +34,7 @@ def main(dbfile):
     #icd9grep = '.*\\\\([VE0-9]{3}\.{0,1}[0-9]{0,2})\\\\.*'
     # not quite foolproof-- still pulls in PROCID's, but in the final version we'll be filtering on this
     icd9grep = '.*\\\\([VE0-9]{3}(\\.[0-9]{0,2}){0,1})\\\\.*'
+    loincgrep = '\\\\([0-9]{4,5}-[0-9])\\\\COMPONENT'
     # TODO (ticket #1): instead of relying on sqlite_denorm.sql, create the scaffold table from inside this 
     # script by putting the appropriate SQL commands into character strings and then passing those
     # strings as arguments to execute() (see below for an example of cur.execute() usage (cur just happens 
@@ -69,8 +71,12 @@ def main(dbfile):
 	on cd.concept_path like vr.concept_path||'%'
 	""")
     print "Mapping concept codes in CDID"
+    # diagnoses
     cur.execute("""update cdid set cpath = grs('"""+icd9grep+"""',cpath) where ddomain like '%|DX_ID' """)
     cur.execute("""update cdid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'ICD9'""")
+    # LOINC
+    cur.execute("""update cdid set cpath = grs('"""+loincgrep+"""',cpath) where ddomain like '%|COMPONENT_ID' """)
+    cur.execute("""update cdid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'LOINC'""")
     con.commit()
     # create a couple of cleaned-up views of observation_fact
     # replace most of the non-informative values with nulls, remove certain known redundant modifiers
@@ -110,24 +116,37 @@ def main(dbfile):
         ) group by patient_num,concept_cd,start_date,modifier_cd,units_cd""");
     
     print "Creating OBS_DIAG_ACTIVE view"
-    cur.execute("drop view if exists OBS_DIAG_ACTIVE")
+    cur.execute("drop view if exists obs_diag_active")
     cur.execute("""
       create view obs_diag_active as
       select distinct patient_num pn,date(start_date) sd,id,cpath
       ,replace('{'||group_concat(distinct modifier_cd)||'}','DiagObs:','') modifier_cd
       from observation_fact join cdid on concept_cd = ccd 
       where modifier_cd not in ('DiagObs:MEDICAL_HX','PROBLEM_STATUS_C:2','PROBLEM_STATUS_C:3','DiagObs:PROBLEM_LIST')
-      group by patient_num,start_date,cpath,id
+      group by patient_num,date(start_date),cpath,id
       """)
     print "Creating OBS_DIAG_INACTIVE view"
-    cur.execute("drop view if exists OBS_DIAG_INACTIVE")
+    cur.execute("drop view if exists obs_diag_inactive")
     cur.execute("""
       create view obs_diag_inactive as
       select distinct patient_num pn,date(start_date) sd,id,cpath
       ,replace('{'||group_concat(distinct modifier_cd)||'}','DiagObs:','') modifier_cd
       from observation_fact join cdid on concept_cd = ccd 
       where modifier_cd in ('DiagObs:MEDICAL_HX','PROBLEM_STATUS_C:2','PROBLEM_STATUS_C:3')
-      group by patient_num,start_date,cpath,id
+      group by patient_num,date(start_date),cpath,id
+      """)
+    print "Creating obs_labs view"
+    cur.execute("drop view if exists obs_labs")
+    cur.execute("""
+      create view obs_labs as
+      select distinct patient_num pn,date(start_date) sd,id,cpath,avg(nval_num) nval_num
+      ,group_concat(distinct units_cd) units
+      ,case when coalesce(group_concat(distinct tval_char),'E')='E' then '' else group_concat(distinct tval_char) end ||
+      case when coalesce(group_concat(distinct valueflag_cd),'@')='@' then '' else ' flag:'||
+      group_concat(distinct valueflag_cd) end || case when count(*) > 1 then ' cnt:'||count(*) else '' end info
+      from observation_fact join cdid on concept_cd = ccd
+      where modifier_cd = '@' and ddomain = 'LOINC' or ddomain like '%COMPONENT_ID'
+      group by patient_num,date(start_date),cpath,id
       """)
     
     # DONE: instead of a with-clause temp-table create a static data dictionary table
@@ -149,6 +168,12 @@ def main(dbfile):
     # diagnosis
     cur.execute("""
 	update data_dictionary set rule = 'diag' where ddomain like '%ICD9%DX_ID%' or ddomain like '%DX_ID%ICD9%'
+	and rule = 'UNKNOWN_DATA_ELEMENT'
+	""")
+    # LOINC
+    cur.execute("""
+	update data_dictionary set rule = 'loinc' where ddomain like '%LOINC%COMPONENT_ID%' 
+	or ddomain like '%COMPONENT_ID%LOINC%'
 	and rule = 'UNKNOWN_DATA_ELEMENT'
 	""")
     # code-only
@@ -266,6 +291,8 @@ def main(dbfile):
     diagqry += " ".join([row[0] for row in cur.fetchall()])
     print "Creating DIAGFACTS table"
     cur.execute(diagqry)
+    
+    # TODO: create the DIAGFACTS table which will contain: pn,sd,nval_num,units,info,and cpath as part of the colid
     
     # DONE: fallback on giant messy concatenated strings for everything else (for now)
     print "Creating dynamic SQL for UNKTEMP and UNKFACTS tables"
