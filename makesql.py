@@ -190,6 +190,13 @@ def main(dbfile):
     # of the concepts in this column, only one is recorded at a time
     cur.execute("update data_dictionary set rule = 'oneperday' where mxfacts = 1 and rule = 'UNKNOWN_DATA_ELEMENT'")
     con.commit()
+    
+    #Merge columns from patient_dimension into the final scaffold table
+    print "Merging patient_dimension with SCAFFOLD table"
+    cur.execute("""select scaffold.*, patient_dimension.patient_num, patient_dimension.birth_date, patient_dimension.sex_cd, patient_dimension.age_in_years_num, patient_dimension.language_cd, patient_dimension.race_cd from scaffold
+    left join patient_dimension
+    on scaffold.patient_num = patient_dimension.patient_num;
+    """)
 
     import pdb; pdb.set_trace()
 
@@ -332,8 +339,21 @@ def main(dbfile):
     left join unkfacts unk on unk.patient_num = scaffold.patient_num and unk.start_date = scaffold.start_date 
     order by patient_num, start_date"""
     cur.execute(allqry)
-    # TODO: create a view that replaces the various strings with simple 1/0 values
+    
+    
     import pdb; pdb.set_trace()
+    #Merge columns from patient_dimension into the final scaffold table
+    print "Merging patient_dimension with SCAFFOLD table"
+    cur.execute("""select scaffold.*, patient_dimension.birth_date, patient_dimension.sex_cd 
+    ,patient_dimension.age_in_years_num, patient_dimension.language_cd, patient_dimension.race_cd from scaffold
+    left join patient_dimension
+    on scaffold.patient_num = patient_dimension.patient_num;
+    """)
+    
+    
+    
+    # TODO: create a view that replaces the various strings with simple 1/0 values
+    
     
     # Boom! We covered all the cases. Messy, but at least a start.
 
@@ -366,7 +386,9 @@ def main(dbfile):
     We are probably looking at several different 'dcat' style tables, broken up by type of data
     TODO: We will iterate through the data dictionary, joining new columns to the result according to the applicable rule
     """
-
+    
+    
+	
 if __name__ == '__main__':
     main(args.dbfile)
 
