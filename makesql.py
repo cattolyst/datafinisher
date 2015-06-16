@@ -47,7 +47,7 @@ def main(sqlscript, dbfile):
 	create table cdid as
 	select distinct concept_cd ccd,id
 	,substr(concept_cd,1,instr(concept_cd,':')-1) ddomain
-	,grs('"""+icd9grep+"""',cd.concept_path) cpath
+	,cd.concept_path cpath
 	from concept_dimension cd 
 	join (select min(id) id,min(concept_path) concept_path 
 	from variable 
@@ -55,7 +55,10 @@ def main(sqlscript, dbfile):
 	group by item_key) vr
 	on cd.concept_path like vr.concept_path||'%'
 	""")
-    import pdb; pdb.set_trace()
+    print "Mapping concept codes in CDID"
+    cur.execute("""update cdid set cpath = grs('"""+icd9grep+"""',cpath) where ddomain like '%|DX_ID' """)
+    cur.execute("""update cdid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'ICD9'""")
+    con.commit()
     # create a couple of cleaned-up views of observation_fact
     # replace most of the non-informative values with nulls, remove certain known redundant modifiers
     print "Creating obs_all and obs_noins views"
@@ -82,16 +85,38 @@ def main(sqlscript, dbfile):
         ,group_concat(distinct valueflag_cd) valueflag_cd,group_concat(distinct quantity_num) quantity_num
         ,units_cd,group_concat(distinct location_cd) location_cd
         ,group_concat(distinct confidence_num) confidence_num from (
-	select distinct patient_num,concept_cd,date(start_date) start_date,modifier_cd
-	,case when valtype_cd in ('@','') then null else valtype_cd end valtype_cd
-	,case when tval_char in ('@','') then null else tval_char end tval_char
-	,nval_num
-	,case when valueflag_cd in ('@','') then null else valueflag_cd end valueflag_cd
-	,quantity_num
-	,units_cd,location_cd,confidence_num from observation_fact
-	where modifier_cd not in ('Labs|Aggregate:Last','Labs|Aggregate:Median','PROCORDERS:Outpatient','DiagObs:PROBLEM_LIST')
-	and concept_cd not like 'DEM|AGEATV:%' and concept_cd not like 'DEM|SEX:%' and concept_cd not like 'DEM|VITAL:%'
+	  select distinct patient_num,concept_cd,date(start_date) start_date,modifier_cd
+	  ,case when valtype_cd in ('@','') then null else valtype_cd end valtype_cd
+	  ,case when tval_char in ('@','') then null else tval_char end tval_char
+	  ,nval_num
+	  ,case when valueflag_cd in ('@','') then null else valueflag_cd end valueflag_cd
+	  ,quantity_num
+	  ,units_cd,location_cd,confidence_num from observation_fact
+	  where modifier_cd not in ('Labs|Aggregate:Last','Labs|Aggregate:Median','PROCORDERS:Outpatient','DiagObs:PROBLEM_LIST')
+	  and concept_cd not like 'DEM|AGEATV:%' and concept_cd not like 'DEM|SEX:%' and concept_cd not like 'DEM|VITAL:%'
         ) group by patient_num,concept_cd,start_date,modifier_cd,units_cd""");
+    
+    print "Creating OBS_DIAG_ACTIVE view"
+    cur.execute("drop view if exists OBS_DIAG_ACTIVE")
+    cur.execute("""
+      create view obs_diag_active as
+      select distinct patient_num pn,date(start_date) sd,id,cpath
+      ,replace('{'||group_concat(distinct modifier_cd)||'}','DiagObs:','') modifier_cd
+      from observation_fact join cdid on concept_cd = ccd 
+      where modifier_cd not in ('DiagObs:MEDICAL_HX','PROBLEM_STATUS_C:2','PROBLEM_STATUS_C:3','DiagObs:PROBLEM_LIST')
+      group by patient_num,start_date,cpath,id
+      """)
+    print "Creating OBS_DIAG_INACTIVE view"
+    cur.execute("drop view if exists OBS_DIAG_INACTIVE")
+    cur.execute("""
+      create view obs_diag_inactive as
+      select distinct patient_num pn,date(start_date) sd,id,cpath
+      ,replace('{'||group_concat(distinct modifier_cd)||'}','DiagObs:','') modifier_cd
+      from observation_fact join cdid on concept_cd = ccd 
+      where modifier_cd in ('DiagObs:MEDICAL_HX','PROBLEM_STATUS_C:2','PROBLEM_STATUS_C:3')
+      group by patient_num,start_date,cpath,id
+      """)
+    
     # DONE: instead of a with-clause temp-table create a static data dictionary table
     #		var(concept_path,concept_cd,ddomain,vid) 
     # BTW, turns out this is a way to read and execute a SQL script
@@ -108,14 +133,23 @@ def main(sqlscript, dbfile):
     # rather than running the same complicated select statement multiple times for each rule in data_dictionary
     # lets just run each selection criterion once and save it as a tag in the new RULE column
     print "Creating rules in DATA_DICTIONARY"
+    # diagnosis
+    cur.execute("""
+	update data_dictionary set rule = 'diag' where ddomain like '%ICD9%DX_ID%' or ddomain like '%DX_ID%ICD9%'
+	and rule = 'UNKNOWN_DATA_ELEMENT'
+	""")
+    # code-only
     cur.execute("""
         update data_dictionary set rule = 'code' where
         coalesce(mod,tval_char,valueflag_cd,units_cd,confidence_num,quantity_num,location_cd,valtype_cd,nval_num,-1) = -1
+        and rule = 'UNKNOWN_DATA_ELEMENT'
         """)
+    # code-and-mod only
     cur.execute("""
         update data_dictionary set rule = 'codemod' where
         coalesce(tval_char,valueflag_cd,units_cd,confidence_num,quantity_num,location_cd,valtype_cd,nval_num,-1) = -1
-        and mod is not null""")
+        and mod is not null and rule = 'UNKNOWN_DATA_ELEMENT'""")
+    # of the concepts in this column, only one is recorded at a time
     cur.execute("update data_dictionary set rule = 'oneperday' where mxfacts = 1 and rule = 'UNKNOWN_DATA_ELEMENT'")
     con.commit()
 
@@ -200,6 +234,22 @@ def main(sqlscript, dbfile):
     oneperdayqry += " ".join([row[0] for row in cur.fetchall()])
     print "Creating ONEPERDAYFACTS table"
     cur.execute(oneperdayqry)
+    # diagnoses output tables
+
+    print "Creating dynamic SQL for DIAG"
+    cur.execute("""
+      select group_concat(colid||','||colid||'_inactive') from data_dictionary where rule = 'diag'
+      """)
+    diagsel = cur.fetchone()[0]
+    diagqry = "create table if not exists diagfacts as select scaffold.*,"+diagsel+" from scaffold "
+    cur.execute("""
+      select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||' from obs_diag_active '||colid||' where id='||cid||' group by pn,sd) '||colid||' on '||colid||'.pn = scaffold.patient_num and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule ='diag'
+      union all
+      select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||'_inactive from obs_diag_inactive '||colid||'_inactive where id='||cid||' group by pn,sd) '||colid||'_inactive on '||colid||'_inactive.pn = scaffold.patient_num and '||colid||'_inactive.sd = scaffold.start_date' from data_dictionary where rule ='diag';
+      """)
+    diagqry += " ".join([row[0] for row in cur.fetchall()])
+    print "Creating DIAGFACTS table"
+    cur.execute(diagqry)
     
     # DONE: fallback on giant messy concatenated strings for everything else (for now)
     print "Creating dynamic SQL for UNKTEMP and UNKFACTS tables"
