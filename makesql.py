@@ -5,7 +5,7 @@
    makesql sqltemplate.sql dbname.db
 """
 
-import sqlite3 as sq,argparse
+import sqlite3 as sq,argparse,re
 
 parser = argparse.ArgumentParser()
 parser.add_argument("sqlscript",help="File containing the static portion of the main SQL script")
@@ -15,26 +15,50 @@ args = parser.parse_args()
 # location of data dictionary sql file
 ddsql = "sql/dd.sql"
 
+# this is to register a SQLite function for pulling out matching substrings (if found)
+# and otherwise returning the original string. Useful for extracting ICD9, CPT, and LOINC codes
+# from concept paths where they are embedded. For ICD9 the magic pattern is:
+# '.*\\\\([VE0-9]{3}\.{0,1}[0-9]{0,2})\\\\.*'
+def ifgrp(pattern,txt):
+    rs = re.search(re.compile(pattern),txt)
+    if rs == None:
+      return txt 
+    else:
+      return rs.group(1)
+
+
 def main(sqlscript, dbfile):
     con = sq.connect(dbfile)
     cur = con.cursor()
+    con.create_function("grs",2,ifgrp)
+    #icd9grep = '.*\\\\([VE0-9]{3}\.{0,1}[0-9]{0,2})\\\\.*'
+    # not quite foolproof-- still pulls in PROCID's, but in the final version we'll be filtering on this
+    icd9grep = '.*\\\\([VE0-9]{3}(\\.[0-9]{0,2}){0,1})\\\\.*'
     # TODO (ticket #1): instead of relying on sqlite_denorm.sql, create the scaffold table from inside this 
     # script by putting the appropriate SQL commands into character strings and then passing those
     # strings as arguments to execute() (see below for an example of cur.execute() usage (cur just happens 
     # to be what we named the cursor object we created above, and execute() is a method that cursor objects have)
     # DONE: create an id to concept_cd mapping table (and filtering out redundant facts taken care of here)
     # TODO: parameterize the fact-filtering 
+    # TODO: once the next family of codes gets implemented, we'll probably have to update cdid with each in turn
     print "Creating CDID table"
     cur.execute("drop table if exists cdid")
     cur.execute("""
 	create table cdid as
-	select distinct concept_cd ccd,substr(concept_cd,1,instr(concept_cd,':')-1) ddomain,id from concept_dimension cd 
+	select distinct concept_cd ccd,id
+	,substr(concept_cd,1,instr(concept_cd,':')-1) ddomain
+	,cd.concept_path cpath
+	from concept_dimension cd 
 	join (select min(id) id,min(concept_path) concept_path 
 	from variable 
 	where name not like '%old at visit' and name not in ('Living','Deceased','Not recorded','Female','Male','Unknown')
 	group by item_key) vr
 	on cd.concept_path like vr.concept_path||'%'
 	""")
+    print "Mapping concept codes in CDID"
+    cur.execute("""update cdid set cpath = grs('"""+icd9grep+"""',cpath) where ddomain like '%|DX_ID' """)
+    cur.execute("""update cdid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'ICD9'""")
+    con.commit()
     # create a couple of cleaned-up views of observation_fact
     # replace most of the non-informative values with nulls, remove certain known redundant modifiers
     print "Creating obs_all and obs_noins views"
@@ -61,16 +85,38 @@ def main(sqlscript, dbfile):
         ,group_concat(distinct valueflag_cd) valueflag_cd,group_concat(distinct quantity_num) quantity_num
         ,units_cd,group_concat(distinct location_cd) location_cd
         ,group_concat(distinct confidence_num) confidence_num from (
-	select distinct patient_num,concept_cd,date(start_date) start_date,modifier_cd
-	,case when valtype_cd in ('@','') then null else valtype_cd end valtype_cd
-	,case when tval_char in ('@','') then null else tval_char end tval_char
-	,nval_num
-	,case when valueflag_cd in ('@','') then null else valueflag_cd end valueflag_cd
-	,quantity_num
-	,units_cd,location_cd,confidence_num from observation_fact
-	where modifier_cd not in ('Labs|Aggregate:Last','Labs|Aggregate:Median','PROCORDERS:Outpatient','DiagObs:PROBLEM_LIST')
-	and concept_cd not like 'DEM|AGEATV:%' and concept_cd not like 'DEM|SEX:%' and concept_cd not like 'DEM|VITAL:%'
+	  select distinct patient_num,concept_cd,date(start_date) start_date,modifier_cd
+	  ,case when valtype_cd in ('@','') then null else valtype_cd end valtype_cd
+	  ,case when tval_char in ('@','') then null else tval_char end tval_char
+	  ,nval_num
+	  ,case when valueflag_cd in ('@','') then null else valueflag_cd end valueflag_cd
+	  ,quantity_num
+	  ,units_cd,location_cd,confidence_num from observation_fact
+	  where modifier_cd not in ('Labs|Aggregate:Last','Labs|Aggregate:Median','PROCORDERS:Outpatient','DiagObs:PROBLEM_LIST')
+	  and concept_cd not like 'DEM|AGEATV:%' and concept_cd not like 'DEM|SEX:%' and concept_cd not like 'DEM|VITAL:%'
         ) group by patient_num,concept_cd,start_date,modifier_cd,units_cd""");
+    
+    print "Creating OBS_DIAG_ACTIVE view"
+    cur.execute("drop view if exists OBS_DIAG_ACTIVE")
+    cur.execute("""
+      create view obs_diag_active as
+      select distinct patient_num pn,date(start_date) sd,id,cpath
+      ,replace('{'||group_concat(distinct modifier_cd)||'}','DiagObs:','') modifier_cd
+      from observation_fact join cdid on concept_cd = ccd 
+      where modifier_cd not in ('DiagObs:MEDICAL_HX','PROBLEM_STATUS_C:2','PROBLEM_STATUS_C:3','DiagObs:PROBLEM_LIST')
+      group by patient_num,start_date,cpath,id
+      """)
+    print "Creating OBS_DIAG_INACTIVE view"
+    cur.execute("drop view if exists OBS_DIAG_INACTIVE")
+    cur.execute("""
+      create view obs_diag_inactive as
+      select distinct patient_num pn,date(start_date) sd,id,cpath
+      ,replace('{'||group_concat(distinct modifier_cd)||'}','DiagObs:','') modifier_cd
+      from observation_fact join cdid on concept_cd = ccd 
+      where modifier_cd in ('DiagObs:MEDICAL_HX','PROBLEM_STATUS_C:2','PROBLEM_STATUS_C:3')
+      group by patient_num,start_date,cpath,id
+      """)
+    
     # DONE: instead of a with-clause temp-table create a static data dictionary table
     #		var(concept_path,concept_cd,ddomain,vid) 
     # BTW, turns out this is a way to read and execute a SQL script
@@ -87,14 +133,23 @@ def main(sqlscript, dbfile):
     # rather than running the same complicated select statement multiple times for each rule in data_dictionary
     # lets just run each selection criterion once and save it as a tag in the new RULE column
     print "Creating rules in DATA_DICTIONARY"
+    # diagnosis
+    cur.execute("""
+	update data_dictionary set rule = 'diag' where ddomain like '%ICD9%DX_ID%' or ddomain like '%DX_ID%ICD9%'
+	and rule = 'UNKNOWN_DATA_ELEMENT'
+	""")
+    # code-only
     cur.execute("""
         update data_dictionary set rule = 'code' where
         coalesce(mod,tval_char,valueflag_cd,units_cd,confidence_num,quantity_num,location_cd,valtype_cd,nval_num,-1) = -1
+        and rule = 'UNKNOWN_DATA_ELEMENT'
         """)
+    # code-and-mod only
     cur.execute("""
         update data_dictionary set rule = 'codemod' where
         coalesce(tval_char,valueflag_cd,units_cd,confidence_num,quantity_num,location_cd,valtype_cd,nval_num,-1) = -1
-        and mod is not null""")
+        and mod is not null and rule = 'UNKNOWN_DATA_ELEMENT'""")
+    # of the concepts in this column, only one is recorded at a time
     cur.execute("update data_dictionary set rule = 'oneperday' where mxfacts = 1 and rule = 'UNKNOWN_DATA_ELEMENT'")
     con.commit()
 
@@ -135,8 +190,11 @@ def main(sqlscript, dbfile):
     print "Creating CODEMODFACTS table"
     cur.execute(codemodqry)
     
+    # DONE: cid's (column id's i.e. groups of variables that were selected together by the researcher)
+    # ...cid's that have a ccd value of 1 (meaning there is only one distinct concept code per cid
     # any variable that doesn't have multiple values on the same day 
-    # (except multiple instances of numeric variables which get averaged)
+    # (except multiple instances of numeric values which get averaged)
+    # these are expected to be numeric variables
     # TODO: create a column in obs_noins with a count of duplicates that got averaged, for QC
     print "Creating dynamic SQL for ONEPERDAY"
     # here are the select terms, but a little more complicated than in the above cases
@@ -176,7 +234,24 @@ def main(sqlscript, dbfile):
     oneperdayqry += " ".join([row[0] for row in cur.fetchall()])
     print "Creating ONEPERDAYFACTS table"
     cur.execute(oneperdayqry)
+    # diagnoses output tables
+
+    print "Creating dynamic SQL for DIAG"
+    cur.execute("""
+      select group_concat(colid||','||colid||'_inactive') from data_dictionary where rule = 'diag'
+      """)
+    diagsel = cur.fetchone()[0]
+    diagqry = "create table if not exists diagfacts as select scaffold.*,"+diagsel+" from scaffold "
+    cur.execute("""
+      select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||' from obs_diag_active '||colid||' where id='||cid||' group by pn,sd) '||colid||' on '||colid||'.pn = scaffold.patient_num and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule ='diag'
+      union all
+      select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||'_inactive from obs_diag_inactive '||colid||'_inactive where id='||cid||' group by pn,sd) '||colid||'_inactive on '||colid||'_inactive.pn = scaffold.patient_num and '||colid||'_inactive.sd = scaffold.start_date' from data_dictionary where rule ='diag';
+      """)
+    diagqry += " ".join([row[0] for row in cur.fetchall()])
+    print "Creating DIAGFACTS table"
+    cur.execute(diagqry)
     
+    # DONE: fallback on giant messy concatenated strings for everything else (for now)
     print "Creating dynamic SQL for UNKTEMP and UNKFACTS tables"
     cur.execute("""select group_concat(colid),
 	group_concat('left join (select patient_num pn,start_date sd,megacode '||colid||
@@ -200,6 +275,7 @@ def main(sqlscript, dbfile):
     cur.execute(unkqry0)
     print "Creating UNKFACTS table"
     cur.execute(unkqry1)
+
     print "Creating FULLOUTPUT table"
     # DONE: except we don't actually do it yet-- need to play with the variables and see the cleanest way to merge
     # the individual tables together
@@ -219,16 +295,8 @@ def main(sqlscript, dbfile):
     # Boom! We covered all the cases. Messy, but at least a start.
 
     # the below yeah, I guess, but there are two big and easier to implement cases to do first
-    # 1. code-only can be the same use-case for branches and leaves, the result will be the same
-    # 2. code-mod-only slightly uglier if doesn't distinguish between branches and leaves but will
-    #    work well enough for now 
 
-    # DONE: cid's (column id's i.e. groups of variables that were selected together by the researcher)
-    # ...cid's that have a ccd value of 1 (meaning there is only one distinct concept code per cid
-    # since these get checked after the code and code-mod groups, these are expected to be numeric variables
-    # after these are dealt with,
 
-    # next next target: fallback on giant messy concatenated strings for everything else (for now)
     """
     The decision process
       branch node
