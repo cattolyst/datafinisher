@@ -81,7 +81,22 @@ def main(cnx):
     # to be what we named the cursor object we created above, and execute() is a method that cursor objects have)
     # DONE: create an id to concept_cd mapping table (and filtering out redundant facts taken care of here)
     # TODO: parameterize the fact-filtering
+    # create a log table
+    cnx.execute("""create table if not exists dflog as
+      select datetime() timestamp,
+      'FirstEntryKey                                     ' key,
+      'FirstEntryVal                                     ' val""")
     
+    if cnx.execute("select count(*) from modifier_dimension").fetchone()[0] == 0:
+      print "modifier_dimension is empty, let's fill it"
+      # we load our local fallback db
+      cnx.execute("attach './sql/datafinisher.db' as dfdb")
+      # and copy from it into the input .db file's modifier_dimension
+      cnx.execute("insert into modifier_dimension select * from dfdb.modifier_dimension")
+      # and log that we did so
+      cnx.execute("insert into dflog select datetime(),'insert','modifier_dimension'")
+      cnx.commit()
+      
     print "Creating scaffold table"
     cur.execute("drop table if exists scaffold")
     # turns out it was not necessary to create an empty table first for scaffold-- the date problem 
