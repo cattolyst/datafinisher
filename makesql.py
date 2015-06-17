@@ -65,11 +65,13 @@ def dropletters(intext):
 
 
 def main(cnx):
+    # create a cursor, though most of the time turns out we don't need it because the connection
+    # also has an execute() method.
     cur = cnx.cursor()
+    # declare some custom functions to use within SQL queries (awesome!)
     cnx.create_function("grs",2,ifgrp)
     cnx.create_function("shw",2,shortenwords)
     cnx.create_function("drl",1,dropletters)
-    #icd9grep = '.*\\\\([VE0-9]{3}\.{0,1}[0-9]{0,2})\\\\.*'
     # not quite foolproof-- still pulls in PROCID's, but in the final version we'll be filtering on this
     icd9grep = '.*\\\\([VE0-9]{3}(\\.[0-9]{0,2}){0,1})\\\\.*'
     loincgrep = '\\\\([0-9]{4,5}-[0-9])\\\\COMPONENT'
