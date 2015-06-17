@@ -38,11 +38,37 @@ def cleanup(cnx):
     for ii in t_drop:
       cnx.execute("drop table if exists "+ii)
 
+def shortenwords(words,limit):
+	""" Initialize the data, lengths, and indexes"""
+	#get rid of the numeric codes
+	words = re.sub('[0-9]','',words)
+	wrds = words.split(); lens = map(len,wrds); idxs=range(len(lens))
+	if limit >= len(words):
+	  return(words)
+	""" sort the indexes and lengths"""
+	idxs.sort(key=lambda xx: lens[xx]); lens.sort()
+	""" initialize the threshold and the vector of 'most important' words"""
+	sumidx=0; keep=[]
+	# turned out that checking the lengths of the lens and idxs is what it takes to avoid crashes
+	while sumidx < limit and len(lens) > 0 and len(idxs) > 0:
+		sumidx += lens.pop()
+		keep.append(idxs.pop())
+	keep.sort()
+	shortened = [wrds[ii] for ii in keep]
+	return " ".join(shortened)
+
+def dropletters(intext):
+	# This function shortens words by squeezing out vowels, most non-alphas, and repeating letters
+	# the first regexp replaces multiple ocurrences of the same letter with one ocurrence of that letter
+	# the \B matches a word boundary... so we only replace vowels from inside words, not leading lettters
+	return re.sub(r"([a-z_ ])\1",r"\1",re.sub("\B[aeiouyAEIOUY]+","",re.sub("[^a-zA-Z _]"," ", intext)))
 
 
 def main(cnx):
     cur = cnx.cursor()
     cnx.create_function("grs",2,ifgrp)
+    cnx.create_function("shw",2,shortenwords)
+    cnx.create_function("drl",1,dropletters)
     #icd9grep = '.*\\\\([VE0-9]{3}\.{0,1}[0-9]{0,2})\\\\.*'
     # not quite foolproof-- still pulls in PROCID's, but in the final version we'll be filtering on this
     icd9grep = '.*\\\\([VE0-9]{3}(\\.[0-9]{0,2}){0,1})\\\\.*'
