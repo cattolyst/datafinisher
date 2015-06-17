@@ -177,13 +177,6 @@ def main(cnx):
     cur.execute("update data_dictionary set rule = 'oneperday' where mxfacts = 1 and rule = 'UNKNOWN_DATA_ELEMENT'")
     cnx.commit()
     
-    #Merge columns from patient_dimension into the final scaffold table
-    print "Merging patient_dimension with SCAFFOLD table"
-    cur.execute("""select scaffold.*, patient_dimension.patient_num, patient_dimension.birth_date, patient_dimension.sex_cd, patient_dimension.age_in_years_num, patient_dimension.language_cd, patient_dimension.race_cd from scaffold
-    left join patient_dimension
-    on scaffold.patient_num = patient_dimension.patient_num;
-    """)
-
     print "Creating dynamic SQL for CODEFACTS"
     cur.execute("select group_concat(colid) from data_dictionary where rule = 'code'")
     codesel = cur.fetchone()[0]
@@ -311,26 +304,20 @@ def main(cnx):
     # DONE: except we don't actually do it yet-- need to play with the variables and see the cleanest way to merge
     # the individual tables together
     # TODO: revise for consistent use of commas
-    allsel = codesel+','+codemodsel+oneperdaysel+','+unkqryvars[0]
+    allsel = """date(patient_dimension.birth_date) birth_date, patient_dimension.sex_cd 
+      ,patient_dimension.language_cd, patient_dimension.race_cd, julianday(start_date) - julian_day(birth_date) age_at_visit_days,""" + codesel+','+codemodsel+oneperdaysel+','+unkqryvars[0]
     allqry = "create table if not exists fulloutput as select scaffold.*,"+allsel
     allqry += """ from scaffold 
     left join codefacts cf on cf.patient_num = scaffold.patient_num and cf.start_date = scaffold.start_date 
     left join codemodfacts cmf on cmf.patient_num = scaffold.patient_num and cmf.start_date = scaffold.start_date 
     left join oneperdayfacts one on one.patient_num = scaffold.patient_num and one.start_date = scaffold.start_date 
     left join unkfacts unk on unk.patient_num = scaffold.patient_num and unk.start_date = scaffold.start_date 
+    left join patient_dimension pd on scaffold.patient_num = pd.patient_num
     order by patient_num, start_date"""
     cur.execute(allqry)
     
     
-    import pdb; pdb.set_trace()
-    #Merge columns from patient_dimension into the final scaffold table
-    print "Merging patient_dimension with SCAFFOLD table"
-    cur.execute("""select scaffold.*, patient_dimension.birth_date, patient_dimension.sex_cd 
-    ,patient_dimension.age_in_years_num, patient_dimension.language_cd, patient_dimension.race_cd from scaffold
-    left join patient_dimension
-    on scaffold.patient_num = patient_dimension.patient_num;
-    """)
-    
+    import pdb; pdb.set_trace()    
     
     
     # TODO: create a view that replaces the various strings with simple 1/0 values
