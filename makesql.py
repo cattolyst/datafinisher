@@ -28,7 +28,8 @@ def ifgrp(pattern,txt):
       return rs.group(1)
 
 def cleanup(cnx):
-    t_drop = ['cdid','codefacts','codemodfacts','diagfacts','fulloutput','oneperdayfacts','scaffold','unkfacts','unktemp']
+    t_drop = ['cdid','codefacts','codemodfacts','diagfacts','loincfacts',
+	      'fulloutput','oneperdayfacts','scaffold','unkfacts','unktemp']
     v_drop = ['obs_all','obs_diag_active','obs_diag_inactive','obs_labs','obs_noins']
     print "Dropping views"
     for ii in v_drop:
@@ -294,14 +295,40 @@ def main(cnx):
     cur.execute("""
       select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||' from obs_diag_active '||colid||' where id='||cid||' group by pn,sd) '||colid||' on '||colid||'.pn = scaffold.patient_num and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule ='diag'
       union all
-      select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||'_inactive from obs_diag_inactive '||colid||'_inactive where id='||cid||' group by pn,sd) '||colid||'_inactive on '||colid||'_inactive.pn = scaffold.patient_num and '||colid||'_inactive.sd = scaffold.start_date' from data_dictionary where rule ='diag';
+      select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||'_inactive from obs_diag_inactive '||colid||'_inactive where id='||cid||' group by pn,sd) '||colid||'_inactive on '||colid||'_inactive.pn = scaffold.patient_num and '||colid||'_inactive.sd = scaffold.start_date' from data_dictionary where rule ='diag' 
       """)
     diagqry += " ".join([row[0] for row in cur.fetchall()])
     print "Creating DIAGFACTS table"
     cur.execute(diagqry)
     
-    # TODO: create the DIAGFACTS table which will contain: pn,sd,nval_num,units,info,and cpath as part of the colid
-    
+    # DONE: create the LOINCFACTS table which will contain: pn,sd,nval_num,units,info,and cpath as part of the colid
+    print "Creating dynamic SQL for LOINC"
+    loincsel = cnx.execute("""
+      select replace(group_concat(distinct colid||'_'||cpath||
+      '_value,'||colid||'_'||cpath||'_units,'||colid||'_'||cpath||'_info'),'-','_')
+      from obs_labs join data_dictionary on cid = id
+      where rule = 'loinc' order by cid""").fetchone()[0]
+    loincqry = "create table if not exists loincfacts as select scaffold.*,"+loincsel+" from scaffold "
+    # okay, so the below is insane and should probably be refactored
+    # We have the usual " ".join(blah blah blah) to create the join clauses
+    # But the query that creates those clauses replaces all hyphens with underscores so that the
+    # dynamically generated column names will be legal ones... but in one place in each subquery, 
+    # there really should be a hyphen instead of an uderscore: where the cpath is matched to a 
+    # LOINC code. So, on the python side, we change those and only those underscores back to hyphens
+    # I know, pretty f*ck*d up, isn't it?
+    loincqry += re.compile("cpath=(['][[0-9]{4,5})_").sub(r'cpath=\1-'," ".join([row[0] for row in cnx.execute("""
+      select distinct
+	replace('left join (select distinct pn,sd,cpath,nval_num '||colid||'_'||cpath||'_value'||
+	',units '||colid||'_'||cpath||'_units'||
+	',info '||colid||'_'||cpath||'_info'||
+	' from obs_labs where id='||cid||
+	' and cpath='''||cpath||''') '||colid||'_'||cpath||
+	' on '||colid||'_'||cpath||'.pn = scaffold.patient_num and '||
+	colid||'_'||cpath||'.sd = scaffold.start_date','-','_')
+	from obs_labs join data_dictionary on cid = id
+	where rule = 'loinc' order by cid""").fetchall()]))
+    cnx.execute(loincqry)
+   
     # DONE: fallback on giant messy concatenated strings for everything else (for now)
     print "Creating dynamic SQL for UNKTEMP and UNKFACTS tables"
     cur.execute("""select group_concat(colid),
@@ -333,10 +360,11 @@ def main(cnx):
     # TODO: revise for consistent use of commas
     allsel = """date(birth_date) birth_date, sex_cd 
       ,language_cd, race_cd, julianday(scaffold.start_date) - julianday(birth_date) age_at_visit_days,"""
-    allsel += diagsel+','+codesel+','+codemodsel+oneperdaysel+','+unkqryvars[0]
+    allsel += diagsel+','+loincsel+','+codesel+','+codemodsel+oneperdaysel+','+unkqryvars[0]
     allqry = "create table if not exists fulloutput as select scaffold.*,"+allsel
     allqry += """ from scaffold 
     left join diagfacts df on df.patient_num = scaffold.patient_num and df.start_date = scaffold.start_date
+    left join loincfacts lf on lf.patient_num = scaffold.patient_num and lf.start_date = scaffold.start_date
     left join codefacts cf on cf.patient_num = scaffold.patient_num and cf.start_date = scaffold.start_date 
     left join codemodfacts cmf on cmf.patient_num = scaffold.patient_num and cmf.start_date = scaffold.start_date 
     left join oneperdayfacts one on one.patient_num = scaffold.patient_num and one.start_date = scaffold.start_date 
@@ -349,8 +377,7 @@ def main(cnx):
     
     
     # TODO: create a view that replaces the various strings with simple 1/0 values
-    
-    
+        
     # Boom! We covered all the cases. Messy, but at least a start.
 
     # the below yeah, I guess, but there are two big and easier to implement cases to do first
@@ -378,9 +405,9 @@ def main(cnx):
     
     TODO: implement a user-configurable 'rulebook' containing patterns for catching data that would otherwise fall 
     into UNKNOWN FALLBACK, and expressing in a parseable form what to do when each rule is triggered.
-    TODO: The data dictionary will contain information about which built-in or user-configured rule applies for each vid
+    DONE: The data dictionary will contain information about which built-in or user-configured rule applies for each cid
     We are probably looking at several different 'dcat' style tables, broken up by type of data
-    TODO: We will iterate through the data dictionary, joining new columns to the result according to the applicable rule
+    DONE: We will iterate through the data dictionary, joining new columns to the result according to the applicable rule
     """
     
     
