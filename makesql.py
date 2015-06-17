@@ -332,7 +332,7 @@ def main(cnx):
     # the individual tables together
     # TODO: revise for consistent use of commas
     allsel = """date(birth_date) birth_date, sex_cd 
-      ,language_cd, race_cd, julianday(start_date) - julianday(birth_date) age_at_visit_days,""" + codesel+','+codemodsel+oneperdaysel+','+unkqryvars[0]
+      ,language_cd, race_cd, julianday(scaffold.start_date) - julianday(birth_date) age_at_visit_days,""" + codesel+','+codemodsel+oneperdaysel+','+unkqryvars[0]
     allqry = "create table if not exists fulloutput as select scaffold.*,"+allsel
     allqry += """ from scaffold 
     left join codefacts cf on cf.patient_num = scaffold.patient_num and cf.start_date = scaffold.start_date 
