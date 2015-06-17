@@ -305,19 +305,20 @@ def main(cnx):
     # the individual tables together
     # TODO: revise for consistent use of commas
     allsel = """date(birth_date) birth_date, sex_cd 
-      ,language_cd, race_cd, julianday(scaffold.start_date) - julianday(birth_date) age_at_visit_days,""" + codesel+','+codemodsel+oneperdaysel+','+unkqryvars[0]
+      ,language_cd, race_cd, julianday(scaffold.start_date) - julianday(birth_date) age_at_visit_days,"""
+    allsel += diagsel+','+codesel+','+codemodsel+oneperdaysel+','+unkqryvars[0]
     allqry = "create table if not exists fulloutput as select scaffold.*,"+allsel
     allqry += """ from scaffold 
+    left join diagfacts df on df.patient_num = scaffold.patient_num and df.start_date = scaffold.start_date
     left join codefacts cf on cf.patient_num = scaffold.patient_num and cf.start_date = scaffold.start_date 
     left join codemodfacts cmf on cmf.patient_num = scaffold.patient_num and cmf.start_date = scaffold.start_date 
     left join oneperdayfacts one on one.patient_num = scaffold.patient_num and one.start_date = scaffold.start_date 
     left join unkfacts unk on unk.patient_num = scaffold.patient_num and unk.start_date = scaffold.start_date 
     left join patient_dimension pd on scaffold.patient_num = pd.patient_num
     order by patient_num, start_date"""
+    import pdb; pdb.set_trace()    
     cur.execute(allqry)
     
-    
-    import pdb; pdb.set_trace()    
     
     
     # TODO: create a view that replaces the various strings with simple 1/0 values
