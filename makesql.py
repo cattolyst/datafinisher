@@ -65,7 +65,7 @@ def dropletters(intext):
 	return re.sub(r"([a-z_ ])\1",r"\1",re.sub("\B[aeiouyAEIOUY]+","",re.sub("[^a-zA-Z _]"," ", intext)))
 
 
-def main(cnx):
+def main(cnx,fname):
     # create a cursor, though most of the time turns out we don't need it because the connection
     # also has an execute() method.
     cur = cnx.cursor()
@@ -411,11 +411,15 @@ def main(cnx):
     left join unkfacts unk on unk.patient_num = scaffold.patient_num and unk.start_date = scaffold.start_date 
     left join patient_dimension pd on scaffold.patient_num = pd.patient_num
     order by patient_num, start_date"""
-    import pdb; pdb.set_trace()    
     cur.execute(allqry)
-    # TODO: write 'select * from fulloutput' to the csvfile. Should it be passed to main as a parameter?
-    
-    
+    import pdb; pdb.set_trace()    
+    if fname.lower() != 'none':
+      ff = open(fname,'wb')
+      csv.writer(ff).writerow([ii[1] for ii in con.execute("PRAGMA table_info(fulloutput)").fetchall()])
+      result = cnx.execute("select * from fulloutput").fetchall()
+      with ff:
+	  csv.writer(ff).writerows(result)
+    # DONE: write 'select * from fulloutput' to the csvfile. Should it be passed to main as a parameter? (yes)
     # TODO: create a view that replaces the various strings with simple 1/0 values
         
     # Boom! We covered all the cases. Messy, but at least a start.
@@ -459,11 +463,12 @@ if __name__ == '__main__':
     else:
       csvfile = args.csvfile
     print csvfile
-    import pdb; pdb.set_trace()    
+    #import pdb; pdb.set_trace();
+    #import code; code.interact(local=vars())
     if args.cleanup:
       cleanup(con)
     else:
-      main(con)
+      main(con,csvfile)
 
 
 
