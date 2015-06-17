@@ -73,7 +73,7 @@ def main(cnx):
     # not quite foolproof-- still pulls in PROCID's, but in the final version we'll be filtering on this
     icd9grep = '.*\\\\([VE0-9]{3}(\\.[0-9]{0,2}){0,1})\\\\.*'
     loincgrep = '\\\\([0-9]{4,5}-[0-9])\\\\COMPONENT'
-    # TODO (ticket #1): instead of relying on sqlite_denorm.sql, create the scaffold table from inside this 
+    # DONE (ticket #1): instead of relying on sqlite_denorm.sql, create the scaffold table from inside this 
     # script by putting the appropriate SQL commands into character strings and then passing those
     # strings as arguments to execute() (see below for an example of cur.execute() usage (cur just happens 
     # to be what we named the cursor object we created above, and execute() is a method that cursor objects have)
@@ -82,14 +82,10 @@ def main(cnx):
     
     print "Creating scaffold table"
     cur.execute("drop table if exists scaffold")
-    cur.execute("""
-    CREATE TABLE
-    scaffold
-    (
-        patient_num NUM,
-        start_date DATE
-    );""")
-    cur.execute("""insert into scaffold (patient_num, start_date) 
+    # turns out it was not necessary to create an empty table first for scaffold-- the date problem 
+    # that this was supposed to solve was being caused by something else, so here is the more concise
+    # version that may also be a little faster
+    cur.execute("""create table if not exists scaffold as
     select distinct patient_num, date(start_date) start_date
     from observation_fact order by patient_num, start_date;
     """)
