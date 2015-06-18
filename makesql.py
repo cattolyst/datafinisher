@@ -382,7 +382,7 @@ def main(cnx,fname,style,dtcp):
     diagsel = cur.fetchone()[0]
     diagqry = "create table if not exists diagfacts as select scaffold.*,"+diagsel+" from scaffold "
     cur.execute("""
-      select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||' from obs_diag_active '||colid||' where id='||cid||' group by pn,sd) '||colid||' on '||colid||'.pn = scaffold.patient_num and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule ='diag'
+      select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||' from obs_diag_active where id='||cid||' group by pn,sd) '||colid||' on '||colid||'.pn = scaffold.patient_num and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule ='diag'
       union all
       select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||'_inactive from obs_diag_inactive '||colid||'_inactive where id='||cid||' group by pn,sd) '||colid||'_inactive on '||colid||'_inactive.pn = scaffold.patient_num and '||colid||'_inactive.sd = scaffold.start_date' from data_dictionary where rule ='diag' 
       """)
@@ -456,7 +456,6 @@ def main(cnx,fname,style,dtcp):
       allsel += ','+unkqryvars[0]
     allqry = "create table if not exists fulloutput as select scaffold.*,"+allsel
     allqry += """ from scaffold 
-    left join patient_dimension pd on scaffold.patient_num = pd.patient_num
     left join diagfacts df on df.patient_num = scaffold.patient_num and df.start_date = scaffold.start_date
     left join loincfacts lf on lf.patient_num = scaffold.patient_num and lf.start_date = scaffold.start_date
     left join codefacts cf on cf.patient_num = scaffold.patient_num and cf.start_date = scaffold.start_date 
