@@ -195,7 +195,7 @@ def main(cnx,fname,style,dtcp):
         ,units_cd,group_concat(distinct location_cd) location_cd
         ,group_concat(distinct confidence_num) confidence_num from (
 	  select distinct patient_num,concept_cd,"""+rdst(dtcp)+""" start_date,modifier_cd
-	  ,case when valtype_cd in ('@','') then null else valtype_cd end valtype_cd
+	  ,case when valtype_cd in ('@','N','') then null else valtype_cd end valtype_cd
 	  ,case when tval_char in ('@','') then null else tval_char end tval_char
 	  ,nval_num
 	  ,case when valueflag_cd in ('@','') then null else valueflag_cd end valueflag_cd
