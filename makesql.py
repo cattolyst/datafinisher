@@ -42,7 +42,9 @@ def cleanup(cnx):
       cnx.execute("drop table if exists "+ii)
       
 # The rdt and rdst functions aren't exactly user-defined SQLite functions...
-# They are python function that 
+# They are python function that emit a string to concatenate into a larger SQL query
+# and send back to SQL... because SQLite has a native julianday() function that's super
+# easy to use. So, think of rdt and rdst as pseudo-UDFs
 def rdt(datecol,factor):
     if factor == 1:
       return 'date('+datecol+')'
