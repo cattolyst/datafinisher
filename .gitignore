@@ -7,3 +7,4 @@
 # the following directory is to stash things for git to not look at
 # such as merge-spam
 nogit
+*.csv
