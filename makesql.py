@@ -384,7 +384,7 @@ def main(cnx,fname,style,dtcp):
     cur.execute("""
       select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||' from obs_diag_active where id='||cid||' group by pn,sd) '||colid||' on '||colid||'.pn = scaffold.patient_num and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule ='diag'
       union all
-      select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||'_inactive from obs_diag_inactive '||colid||'_inactive where id='||cid||' group by pn,sd) '||colid||'_inactive on '||colid||'_inactive.pn = scaffold.patient_num and '||colid||'_inactive.sd = scaffold.start_date' from data_dictionary where rule ='diag' 
+      select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||'_inactive from obs_diag_inactive where id='||cid||' group by pn,sd) '||colid||'_inactive on '||colid||'_inactive.pn = scaffold.patient_num and '||colid||'_inactive.sd = scaffold.start_date' from data_dictionary where rule ='diag' 
       """)
     diagqry += " ".join([row[0] for row in cur.fetchall()])
     tprint("created dynamic SQL for diag",tt);tt = time.time()
