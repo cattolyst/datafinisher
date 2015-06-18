@@ -40,6 +40,9 @@ def cleanup(cnx):
     print "Dropping tables"
     for ii in t_drop:
       cnx.execute("drop table if exists "+ii)
+
+def tprint(str,tt):
+    print(str+":"+" "*(60-len(str))+"%9.4f" % round((time.time() - tt),4))
       
 # The rdt and rdst functions aren't exactly user-defined SQLite functions...
 # They are python function that emit a string to concatenate into a larger SQL query
@@ -81,7 +84,7 @@ def dropletters(intext):
 
 
 def main(cnx,fname,style,dtcp):
-    start_time = time.time()
+    tt = time.time(); startt = tt
     # create a cursor, though most of the time turns out we don't need it because the connection
     # also has an execute() method.
     cur = cnx.cursor()
@@ -132,8 +135,8 @@ def main(cnx,fname,style,dtcp):
       # and log that we did so
       cnx.execute("insert into dflog select datetime(),'insert','modifier_dimension'")
       cnx.commit()
-    
-    print "Creating scaffold table"
+    tprint("initialized variables",tt);tt = time.time()
+
     # cur.execute("drop table if exists scaffold")
     # turns out it was not necessary to create an empty table first for scaffold-- the date problem 
     # that this was supposed to solve was being caused by something else, so here is the more concise
@@ -142,13 +145,12 @@ def main(cnx,fname,style,dtcp):
     select distinct patient_num, """+rdst(dtcp)+""" start_date
     from observation_fact order by patient_num, start_date;
     """)
-
     cnx.execute("CREATE UNIQUE INDEX if not exists df_ix_scaffold ON scaffold (patient_num,start_date) ")
+    tprint("created scaffold table and index",tt);tt = time.time()
 
-    print "Creating CDID table"
     # cnx.execute("drop table if exists cdid")
     cnx.execute("""
-	create table cdid as
+	create table if not exists cdid as
 	select distinct concept_cd ccd,id
 	,substr(concept_cd,1,instr(concept_cd,':')-1) ddomain
 	,cd.concept_path cpath
@@ -159,7 +161,8 @@ def main(cnx,fname,style,dtcp):
 	group by item_key) vr
 	on cd.concept_path like vr.concept_path||'%'
 	""")
-    print "Mapping concept codes in CDID"
+    tprint("created cdid table",tt);tt = time.time()
+
     # diagnoses
     cnx.execute("""update cdid set cpath = grs('"""+icd9grep+"""',cpath) where ddomain like '%|DX_ID' """)
     cnx.execute("""update cdid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'ICD9'""")
@@ -168,9 +171,10 @@ def main(cnx,fname,style,dtcp):
     cnx.execute("""update cdid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'LOINC'""")
     cnx.execute("create UNIQUE INDEX if not exists df_ix_cdid ON cdid (id,cpath,ccd)")
     cnx.commit()
+    tprint("mapped concept codes in cdid",tt);tt = time.time()
+
     # create a couple of cleaned-up views of observation_fact
     # replace most of the non-informative values with nulls, remove certain known redundant modifiers
-    print "Creating obs_all and obs_noins views"
     cur.execute("drop view if exists obs_all")
     cur.execute("""
 	create view obs_all as
@@ -204,8 +208,8 @@ def main(cnx,fname,style,dtcp):
 	  where modifier_cd not in ('Labs|Aggregate:Last','Labs|Aggregate:Median','PROCORDERS:Outpatient','DiagObs:PROBLEM_LIST')
 	  and concept_cd not like 'DEM|AGEATV:%' and concept_cd not like 'DEM|SEX:%' and concept_cd not like 'DEM|VITAL:%'
         ) group by patient_num,start_date,concept_cd,modifier_cd,units_cd""");
+    tprint("created obs_all and obs_noins views",tt);tt = time.time()
     
-    print "Creating OBS_DIAG_ACTIVE view"
     cur.execute("drop view if exists obs_diag_active")
     cur.execute("""
       create view obs_diag_active as
@@ -215,7 +219,8 @@ def main(cnx,fname,style,dtcp):
       where modifier_cd not in ('DiagObs:MEDICAL_HX','PROBLEM_STATUS_C:2','PROBLEM_STATUS_C:3','DiagObs:PROBLEM_LIST')
       group by patient_num,"""+rdst(dtcp)+""",cpath,id
       """)
-    print "Creating OBS_DIAG_INACTIVE view"
+    tprint("created obs_diag_active view",tt);tt = time.time()
+
     cur.execute("drop view if exists obs_diag_inactive")
     cur.execute("""
       create view obs_diag_inactive as
@@ -225,7 +230,8 @@ def main(cnx,fname,style,dtcp):
       where modifier_cd in ('DiagObs:MEDICAL_HX','PROBLEM_STATUS_C:2','PROBLEM_STATUS_C:3')
       group by patient_num,"""+rdst(dtcp)+""",cpath,id
       """)
-    print "Creating obs_labs view"
+    tprint("created obs_diag_inactive view",tt);tt = time.time()
+
     cur.execute("drop view if exists obs_labs")
     cur.execute("""
       create view obs_labs as
@@ -238,6 +244,7 @@ def main(cnx,fname,style,dtcp):
       where modifier_cd = '@' and ddomain = 'LOINC' or ddomain like '%COMPONENT_ID'
       group by patient_num,"""+rdst(dtcp)+""",cpath,id
       """)
+    tprint("created obs_labs view",tt);tt = time.time()
     
     # DONE: instead of a with-clause temp-table create a static data dictionary table
     #		var(concept_path,concept_cd,ddomain,vid) 
@@ -248,14 +255,14 @@ def main(cnx,fname,style,dtcp):
     # will instead cross-walk the cdid table as needed
     # ...but perhaps unnecessary now that cdid table exists
     
-    print "Creating DATA_DICTIONARY"
     #cur.execute("drop table if exists data_dictionary")
     with open(ddsql,'r') as ddf:
 	ddcreate = ddf.read()
     cur.execute(ddcreate)
     # rather than running the same complicated select statement multiple times for each rule in data_dictionary
     # lets just run each selection criterion once and save it as a tag in the new RULE column
-    print "Creating rules in DATA_DICTIONARY"
+    tprint("created data_dictionary",tt);tt = time.time()
+
     # diagnosis
     cur.execute("""
 	update data_dictionary set rule = 'diag' where ddomain like '%ICD9%DX_ID%' or ddomain like '%DX_ID%ICD9%'
@@ -281,8 +288,8 @@ def main(cnx,fname,style,dtcp):
     # of the concepts in this column, only one is recorded at a time
     cur.execute("update data_dictionary set rule = 'oneperday' where mxfacts = 1 and rule = 'UNKNOWN_DATA_ELEMENT'")
     cnx.commit()
+    tprint("added rules to data_dictionary",tt);tt = time.time()
     
-    print "Creating dynamic SQL for CODEFACTS"
     cur.execute("select group_concat(colid) from data_dictionary where rule = 'code'")
     codesel = cur.fetchone()[0]
     # dynamically generate the terms in the select statement
@@ -298,11 +305,12 @@ def main(cnx,fname,style,dtcp):
         on '||colid||'.patient_num = scaffold.patient_num 
         and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule = 'code'""")
     codeqry += " ".join([row[0] for row in cur.fetchall()])
-    print "Creating CODEFACTS table"
+    tprint("created dynamic SQL for codefacts",tt);tt = time.time()
+
     cur.execute(codeqry) 
+    tprint("created codefacts table",tt);tt = time.time()
     # same pattern as above, but now for facts that consist of both codes and modifiers
 
-    print "Creating dynamic SQL for CODEMODFACTS"
     # select terms...
     cur.execute("select group_concat(colid) from data_dictionary where rule = 'codemod'")
     codemodsel = cur.fetchone()[0]
@@ -316,8 +324,10 @@ def main(cnx,fname,style,dtcp):
         on '||colid||'.patient_num = scaffold.patient_num 
         and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule = 'codemod'""")
     codemodqry += " ".join([row[0] for row in cur.fetchall()])
-    print "Creating CODEMODFACTS table"
+    tprint("created dynamic SQL for codemodfacts",tt);tt = time.time()
+
     cur.execute(codemodqry)
+    tprint("created codemodfacts table",tt);tt = time.time()
     
     # DONE: cid's (column id's i.e. groups of variables that were selected together by the researcher)
     # ...cid's that have a ccd value of 1 (meaning there is only one distinct concept code per cid
@@ -325,7 +335,6 @@ def main(cnx,fname,style,dtcp):
     # (except multiple instances of numeric values which get averaged)
     # these are expected to be numeric variables
     # TODO: create a column in obs_noins with a count of duplicates that got averaged, for QC
-    print "Creating dynamic SQL for ONEPERDAY"
     # here are the select terms, but a little more complicated than in the above cases
     # on the fence whether to have extra column for the code
     # ','||colid||'_cd'||
@@ -361,11 +370,12 @@ def main(cnx,fname,style,dtcp):
 	colid||'.patient_num = scaffold.patient_num'
 	from data_dictionary where rule = 'oneperday'""")
     oneperdayqry += " ".join([row[0] for row in cur.fetchall()])
-    print "Creating ONEPERDAYFACTS table"
+    tprint("created dynamic SQL for oneperday",tt);tt = time.time()
+
     cur.execute(oneperdayqry)
+    tprint("created oneperdayfacts table",tt);tt = time.time()
     # diagnoses output tables
 
-    print "Creating dynamic SQL for DIAG"
     cur.execute("""
       select group_concat(colid||','||colid||'_inactive') from data_dictionary where rule = 'diag'
       """)
@@ -377,11 +387,11 @@ def main(cnx,fname,style,dtcp):
       select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||'_inactive from obs_diag_inactive '||colid||'_inactive where id='||cid||' group by pn,sd) '||colid||'_inactive on '||colid||'_inactive.pn = scaffold.patient_num and '||colid||'_inactive.sd = scaffold.start_date' from data_dictionary where rule ='diag' 
       """)
     diagqry += " ".join([row[0] for row in cur.fetchall()])
-    print "Creating DIAGFACTS table"
+    tprint("created dynamic SQL for diag",tt);tt = time.time()
     cur.execute(diagqry)
+    tprint("created diagfacts table",tt);tt = time.time()
     
     # DONE: create the LOINCFACTS table which will contain: pn,sd,nval_num,units,info,and cpath as part of the colid
-    print "Creating dynamic SQL for LOINC"
     loincsel = cnx.execute("""
       select replace(group_concat(distinct colid||'_'||cpath||
       '_value,'||colid||'_'||cpath||'_units,'||colid||'_'||cpath||'_info'),'-','_')
@@ -406,10 +416,11 @@ def main(cnx,fname,style,dtcp):
 	colid||'_'||cpath||'.sd = scaffold.start_date','-','_')
 	from obs_labs join data_dictionary on cid = id
 	where rule = 'loinc' order by cid""").fetchall()]))
+    tprint("created dynamic SQL for loinc",tt);tt = time.time()
     cnx.execute(loincqry)
+    tprint("created loincfacts table",tt);tt = time.time()
    
     # DONE: fallback on giant messy concatenated strings for everything else (for now)
-    print "Creating dynamic SQL for UNKTEMP and UNKFACTS tables"
     cur.execute("""select group_concat(colid),
 	group_concat('left join (select patient_num pn,start_date sd,megacode '||colid||
 	    ' from unktemp where id = '||cid||') '||colid||' on '||colid||'.pn = patient_num 
@@ -428,12 +439,12 @@ def main(cnx,fname,style,dtcp):
 	where id in ("""+unkqryvars[2]+") group by patient_num,start_date,id"
     unkqry1 = "create table if not exists unkfacts as select scaffold.*,"+unkqryvars[0]+" from scaffold "
     unkqry1 += unkqryvars[1]
-    print "Creating UNKTEMP table"
+    tprint("created dynamic SQL for unktemp and unkfacts tables",tt);tt = time.time()
     cur.execute(unkqry0)
-    print "Creating UNKFACTS table"
+    tprint("created unktemp table",tt);tt = time.time()
     cur.execute(unkqry1)
+    tprint("created unkfacts table",tt);tt = time.time()
 
-    print "Creating FULLOUTPUT table"
     # DONE: except we don't actually do it yet-- need to play with the variables and see the cleanest way to merge
     # the individual tables together
     # TODO: revise for consistent use of commas
@@ -451,8 +462,8 @@ def main(cnx,fname,style,dtcp):
     left join patient_dimension pd on scaffold.patient_num = pd.patient_num
     order by patient_num, start_date"""
     cur.execute(allqry)
+    tprint("created fulloutput table",tt);tt = time.time()
 
-    print "Creating BINOUTPUT view of the result"
     binoutqry = """create view binoutput as select patient_num,start_date,birth_date,sex_cd
 		   ,language_cd,race_cd,age_at_visit_days"""
     binoutqry += ","+",".join([" case when "+ii[1]+" is null then '"+binvals[0]+"' else '"+binvals[1]+\
@@ -468,6 +479,7 @@ def main(cnx,fname,style,dtcp):
     binoutqry += " from fulloutput"
     cnx.execute("drop view if exists binoutput")
     cnx.execute(binoutqry)
+    tprint("created binoutput view",tt);tt = time.time()
 
     if style == 'simple':
       finalview = 'binoutput'
@@ -482,7 +494,8 @@ def main(cnx,fname,style,dtcp):
 	  csv.writer(ff).writerows(result)
     # DONE: write 'select * from fulloutput' to the csvfile. Should it be passed to main as a parameter? (yes)
     # TODO: create a view that replaces the various strings with simple 1/0 values
-    print("--- %s seconds ---" % (time.time() - start_time))
+    tprint("wrote output table to file",tt);tt = time.time()
+    tprint("TOTAL RUNTIME",startt)
     import pdb; pdb.set_trace()    
         
     # Boom! We covered all the cases. Messy, but at least a start.
