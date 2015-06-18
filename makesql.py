@@ -427,40 +427,44 @@ def main(cnx,fname,style,dtcp):
 	      and '||colid||'.sd = start_date ',' '),
 	group_concat(cid) from data_dictionary where rule = 'UNKNOWN_DATA_ELEMENT'""")
     unkqryvars = cur.fetchone()
-    unkqry0 = """create table if not exists unktemp as 
-	select patient_num,"""+rdst(dtcp)+""" start_date,id
-	,group_concat(distinct concept_cd||coalesce('&mod='||modifier_cd,'')||
-	coalesce('&ins='||instance_num,'')||coalesce('&typ='||valtype_cd,'')||
-	coalesce('&txt='||tval_char,'')||coalesce('&num='||nval_num,'')||
-	coalesce('&flg='||valueflag_cd,'')||coalesce('&qty='||quantity_num,'')||
-	coalesce('&unt='||units_cd,'')||coalesce('&loc='||location_cd,'')||
-	coalesce('&cnf='||confidence_num,'')) megacode
-	from obs_all join cdid on concept_cd = ccd
-	where id in ("""+unkqryvars[2]+") group by patient_num,start_date,id"
-    unkqry1 = "create table if not exists unkfacts as select scaffold.*,"+unkqryvars[0]+" from scaffold "
-    unkqry1 += unkqryvars[1]
-    tprint("created dynamic SQL for unktemp and unkfacts tables",tt);tt = time.time()
-    cur.execute(unkqry0)
-    tprint("created unktemp table",tt);tt = time.time()
-    cur.execute(unkqry1)
-    tprint("created unkfacts table",tt);tt = time.time()
+    if unkqryvars[2] != None:
+      unkqry0 = """create table if not exists unktemp as 
+	  select patient_num,"""+rdst(dtcp)+""" start_date,id
+	  ,group_concat(distinct concept_cd||coalesce('&mod='||modifier_cd,'')||
+	  coalesce('&ins='||instance_num,'')||coalesce('&typ='||valtype_cd,'')||
+	  coalesce('&txt='||tval_char,'')||coalesce('&num='||nval_num,'')||
+	  coalesce('&flg='||valueflag_cd,'')||coalesce('&qty='||quantity_num,'')||
+	  coalesce('&unt='||units_cd,'')||coalesce('&loc='||location_cd,'')||
+	  coalesce('&cnf='||confidence_num,'')) megacode
+	  from obs_all join cdid on concept_cd = ccd
+	  where id in ("""+unkqryvars[2]+") group by patient_num,start_date,id"
+      unkqry1 = "create table if not exists unkfacts as select scaffold.*,"+unkqryvars[0]+" from scaffold "
+      unkqry1 += unkqryvars[1]
+      tprint("created dynamic SQL for unktemp and unkfacts tables",tt);tt = time.time()
+      cur.execute(unkqry0)
+      tprint("created unktemp table",tt);tt = time.time()
+      cur.execute(unkqry1)
+      tprint("created unkfacts table",tt);tt = time.time()
 
     # DONE: except we don't actually do it yet-- need to play with the variables and see the cleanest way to merge
     # the individual tables together
     # TODO: revise for consistent use of commas
     allsel = rdt('birth_date',dtcp)+""" birth_date, sex_cd 
       ,language_cd, race_cd, julianday(scaffold.start_date) - julianday("""+rdt('birth_date',dtcp)+") age_at_visit_days,"
-    allsel += diagsel+','+loincsel+','+codesel+','+codemodsel+oneperdaysel+','+unkqryvars[0]
+    allsel += diagsel+','+loincsel+','+codesel+','+codemodsel+oneperdaysel
+    if unkqryvars[0] != None:
+      allsel += ','+unkqryvars[0]
     allqry = "create table if not exists fulloutput as select scaffold.*,"+allsel
     allqry += """ from scaffold 
+    left join patient_dimension pd on scaffold.patient_num = pd.patient_num
     left join diagfacts df on df.patient_num = scaffold.patient_num and df.start_date = scaffold.start_date
     left join loincfacts lf on lf.patient_num = scaffold.patient_num and lf.start_date = scaffold.start_date
     left join codefacts cf on cf.patient_num = scaffold.patient_num and cf.start_date = scaffold.start_date 
     left join codemodfacts cmf on cmf.patient_num = scaffold.patient_num and cmf.start_date = scaffold.start_date 
-    left join oneperdayfacts one on one.patient_num = scaffold.patient_num and one.start_date = scaffold.start_date 
-    left join unkfacts unk on unk.patient_num = scaffold.patient_num and unk.start_date = scaffold.start_date 
-    left join patient_dimension pd on scaffold.patient_num = pd.patient_num
-    order by patient_num, start_date"""
+    left join oneperdayfacts one on one.patient_num = scaffold.patient_num and one.start_date = scaffold.start_date """
+    if unkqryvars[2] != None:
+      allqry += "left join unkfacts unk on unk.patient_num = scaffold.patient_num and unk.start_date = scaffold.start_date "
+    allqry += " order by patient_num, start_date"
     cur.execute(allqry)
     tprint("created fulloutput table",tt);tt = time.time()
 
@@ -474,8 +478,9 @@ def main(cnx,fname,style,dtcp):
     binoutqry += ","+",".join([" case when "+ii[1]+" is null then '"+binvals[0]+"' else '"+binvals[1]+\
 			"' end "+ii[1] for ii in cnx.execute("pragma table_info(codemodfacts)").fetchall()[2:]])
     binoutqry += ","+",".join([ii[1] for ii in cnx.execute("pragma table_info(oneperdayfacts)").fetchall()[2:]])
-    binoutqry += ","+",".join([" case when "+ii[1]+" is null then '"+binvals[0]+"' else '"+binvals[1]+\
-			"' end "+ii[1] for ii in cnx.execute("pragma table_info(unkfacts)").fetchall()[2:]])
+    if unkqryvars[2] != None:
+      binoutqry += ","+",".join([" case when "+ii[1]+" is null then '"+binvals[0]+"' else '"+binvals[1]+\
+			  "' end "+ii[1] for ii in cnx.execute("pragma table_info(unkfacts)").fetchall()[2:]])
     binoutqry += " from fulloutput"
     cnx.execute("drop view if exists binoutput")
     cnx.execute(binoutqry)
