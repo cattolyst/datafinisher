@@ -57,6 +57,21 @@ def rdt(datecol,factor):
 def rdst(factor):
     return rdt('start_date',factor)
 
+def dfctday(**kwargs):                                          
+  if kwargs is not None:
+    oo = "replace(group_concat(distinct '{'||"
+    for key,val in kwargs.iteritems():
+      oo += """coalesce('{0}:"'||{1}||'",','')||""".format(key,val)
+    oo += "'}'),',}','}')"                                             
+    return oo
+  
+def dfctcode(**kwargs):
+   if kwargs is not None:
+     oo = ""
+     for key,val in kwargs.iteritems():
+       oo += """coalesce('{0}:['||group_concat(distinct '"'||{1}||'"')||'],','')||""".format(key,val)
+     return oo[:-2].replace('],',']')
+
 def shortenwords(words,limit):
 	""" Initialize the data, lengths, and indexes"""
 	#get rid of the numeric codes
@@ -211,10 +226,13 @@ def main(cnx,fname,style,dtcp):
     tprint("created obs_all and obs_noins views",tt);tt = time.time()
     
     cur.execute("drop view if exists obs_diag_active")
+    #       ,replace('{'||group_concat(distinct modifier_cd)||'}','DiagObs:','') modifier_cd
+    #       ,replace("""+dfctcode(mod='modifier_cd').replace("'mod","||cpath'")+""",'DiagObs:','') modifier_cd 
+    # ,replace(replace("""+dfctcode(mod='modifier_cd')+""",'DiagObs:',''),'mod',cpath) modifier_cd 
     cur.execute("""
       create view obs_diag_active as
       select distinct patient_num pn,"""+rdst(dtcp)+""" sd,id,cpath
-      ,replace('{'||group_concat(distinct modifier_cd)||'}','DiagObs:','') modifier_cd
+      ,replace(replace("""+dfctcode(mod='modifier_cd')+""",'DiagObs:',''),'mod',cpath) modifier_cd 
       from observation_fact join cdid on concept_cd = ccd 
       where modifier_cd not in ('DiagObs:MEDICAL_HX','PROBLEM_STATUS_C:2','PROBLEM_STATUS_C:3','DiagObs:PROBLEM_LIST')
       group by patient_num,"""+rdst(dtcp)+""",cpath,id
@@ -222,10 +240,11 @@ def main(cnx,fname,style,dtcp):
     tprint("created obs_diag_active view",tt);tt = time.time()
 
     cur.execute("drop view if exists obs_diag_inactive")
+#       ,replace('{'||group_concat(distinct modifier_cd)||'}','DiagObs:','') modifier_cd
     cur.execute("""
       create view obs_diag_inactive as
       select distinct patient_num pn,"""+rdst(dtcp)+""" sd,id,cpath
-      ,replace('{'||group_concat(distinct modifier_cd)||'}','DiagObs:','') modifier_cd
+      ,replace(replace("""+dfctcode(mod='modifier_cd')+""",'DiagObs:',''),'mod',cpath) modifier_cd 
       from observation_fact join cdid on concept_cd = ccd 
       where modifier_cd in ('DiagObs:MEDICAL_HX','PROBLEM_STATUS_C:2','PROBLEM_STATUS_C:3')
       group by patient_num,"""+rdst(dtcp)+""",cpath,id
@@ -316,14 +335,15 @@ def main(cnx,fname,style,dtcp):
     codemodsel = cur.fetchone()[0]
     codemodqry = "create table if not exists codemodfacts as select scaffold.*,"+codemodsel+" from scaffold "
     # ...and joins...
-    cur.execute("""
+    codemodx = """
         select ' left join (select patient_num,start_date sd
         ,replace(group_concat(distinct concept_cd||''=''||modifier_cd),'','',''; '') '||colid||' from cdid 
         join obs_noins on ccd = concept_cd where id = '||cid||' group by patient_num
         ,start_date order by patient_num,start_date) '||colid||' 
         on '||colid||'.patient_num = scaffold.patient_num 
-        and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule = 'codemod'""")
-    codemodqry += " ".join([row[0] for row in cur.fetchall()])
+        and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule = 'codemod'"""
+    import pdb; pdb.set_trace()
+    codemodqry += " ".join([row[0] for row in cnx.execute(codemodx).fetchall()])
     tprint("created dynamic SQL for codemodfacts",tt);tt = time.time()
 
     cur.execute(codemodqry)
@@ -382,7 +402,8 @@ def main(cnx,fname,style,dtcp):
     diagsel = cur.fetchone()[0]
     diagqry = "create table if not exists diagfacts as select scaffold.*,"+diagsel+" from scaffold "
     cur.execute("""
-      select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||' from obs_diag_active where id='||cid||' group by pn,sd) '||colid||' on '||colid||'.pn = scaffold.patient_num and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule ='diag'
+      select 'left join (select pn,sd
+      ,group_concat(distinct modifier_cd) '||colid||' from obs_diag_active where id='||cid||' group by pn,sd) '||colid||' on '||colid||'.pn = scaffold.patient_num and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule ='diag'
       union all
       select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||'_inactive from obs_diag_inactive where id='||cid||' group by pn,sd) '||colid||'_inactive on '||colid||'_inactive.pn = scaffold.patient_num and '||colid||'_inactive.sd = scaffold.start_date' from data_dictionary where rule ='diag' 
       """)
@@ -428,21 +449,27 @@ def main(cnx,fname,style,dtcp):
 	group_concat(cid) from data_dictionary where rule = 'UNKNOWN_DATA_ELEMENT'""")
     unkqryvars = cur.fetchone()
     if unkqryvars[2] != None:
-      unkqry0 = """create table if not exists unktemp as 
-	  select patient_num,"""+rdst(dtcp)+""" start_date,id
+      unkqry0 = "create table if not exists unktemp as select patient_num,start_date,id,"
+      unkqry0 += dfctday(cd="concept_cd",md="modifier_cd",ix="instance_num",tp="valtype_cd",\
+	tv="tval_char",nv="nval_num",fl="valueflag_cd",qt="quantity_num",un="units_cd",\
+	  lc="location_cd",cf="confidence_num") + " megacode from "
+      unkqry0 += """obs_all join cdid on concept_cd = ccd
+		    where id in ("""+unkqryvars[2]+") group by patient_num,start_date,id"
+
+      """
 	  ,group_concat(distinct concept_cd||coalesce('&mod='||modifier_cd,'')||
 	  coalesce('&ins='||instance_num,'')||coalesce('&typ='||valtype_cd,'')||
 	  coalesce('&txt='||tval_char,'')||coalesce('&num='||nval_num,'')||
 	  coalesce('&flg='||valueflag_cd,'')||coalesce('&qty='||quantity_num,'')||
 	  coalesce('&unt='||units_cd,'')||coalesce('&loc='||location_cd,'')||
 	  coalesce('&cnf='||confidence_num,'')) megacode
-	  from obs_all join cdid on concept_cd = ccd
-	  where id in ("""+unkqryvars[2]+") group by patient_num,start_date,id"
+      """
       unkqry1 = "create table if not exists unkfacts as select scaffold.*,"+unkqryvars[0]+" from scaffold "
       unkqry1 += unkqryvars[1]
       tprint("created dynamic SQL for unktemp and unkfacts tables",tt);tt = time.time()
       cur.execute(unkqry0)
       tprint("created unktemp table",tt);tt = time.time()
+      import pdb; pdb.set_trace()
       cur.execute(unkqry1)
       tprint("created unkfacts table",tt);tt = time.time()
 
@@ -456,6 +483,7 @@ def main(cnx,fname,style,dtcp):
       allsel += ','+unkqryvars[0]
     allqry = "create table if not exists fulloutput as select scaffold.*,"+allsel
     allqry += """ from scaffold 
+    left join patient_dimension pd on pd.patient_num = scaffold.patient_num
     left join diagfacts df on df.patient_num = scaffold.patient_num and df.start_date = scaffold.start_date
     left join loincfacts lf on lf.patient_num = scaffold.patient_num and lf.start_date = scaffold.start_date
     left join codefacts cf on cf.patient_num = scaffold.patient_num and cf.start_date = scaffold.start_date 
