@@ -225,6 +225,16 @@ def main(cnx,fname,style,dtcp):
         ) group by patient_num,start_date,concept_cd,modifier_cd,units_cd""");
     tprint("created obs_all and obs_noins views",tt);tt = time.time()
     
+    cnx.execute("drop view if exists obs_codemod")
+    cnx.execute("create view obs_codemod as select distinct patient_num pn,"+rdst(dtcp)+""" sd,id,concept_cd
+		,replace("""+dfctcode(mod="case when modifier_cd in ('','@') then null else modifier_cd end")+""",'mod',concept_cd) modifier_cd
+		from observation_fact join cdid on concept_cd = ccd
+		where modifier_cd not in ('Labs|Aggregate:Median','Labs|Aggregate:Last'
+		  ,'DiagObs:MEDICAL_HX','PROBLEM_STATUS_C:2','PROBLEM_STATUS_C:3','DiagObs:PROBLEM_LIST'
+		  ,'PROCORDERS:Outpatient')
+		group by patient_num,"""+rdst(dtcp)+""",concept_cd,id
+		""")
+    
     cur.execute("drop view if exists obs_diag_active")
     #       ,replace('{'||group_concat(distinct modifier_cd)||'}','DiagObs:','') modifier_cd
     #       ,replace("""+dfctcode(mod='modifier_cd').replace("'mod","||cpath'")+""",'DiagObs:','') modifier_cd 
@@ -342,7 +352,7 @@ def main(cnx,fname,style,dtcp):
         ,start_date order by patient_num,start_date) '||colid||' 
         on '||colid||'.patient_num = scaffold.patient_num 
         and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule = 'codemod'"""
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     codemodqry += " ".join([row[0] for row in cnx.execute(codemodx).fetchall()])
     tprint("created dynamic SQL for codemodfacts",tt);tt = time.time()
 
