@@ -18,6 +18,24 @@ args = parser.parse_args()
 # location of data dictionary sql file
 ddsql = "sql/dd.sql"
 
+# okay, this actually works
+class diaggregate:
+  def __init__(self):
+    #self.mods = []
+    self.cons = {}
+  def step(self,con,mod):
+    if con not in self.cons.keys():
+      self.cons[con] = [mod]
+    else:
+      if mod not in self.cons[con]:
+	self.cons[con].append(mod)
+    #self.mods.append(mod)
+    #self.cons.append(con)
+    #print self.mods
+    #print self.cons
+  def finalize(self):
+    return ",".join(",".join(self.cons[ii]) for ii in self.cons)
+
 # this is to register a SQLite function for pulling out matching substrings (if found)
 # and otherwise returning the original string. Useful for extracting ICD9, CPT, and LOINC codes
 # from concept paths where they are embedded. For ICD9 the magic pattern is:
@@ -107,6 +125,7 @@ def main(cnx,fname,style,dtcp):
     cnx.create_function("grs",2,ifgrp)
     cnx.create_function("shw",2,shortenwords)
     cnx.create_function("drl",1,dropletters)
+    cnx.create_aggregate("dgr",2,diaggregate)
     # not quite foolproof-- still pulls in PROCID's, but in the final version we'll be filtering on this
     icd9grep = '.*\\\\([VE0-9]{3}(\\.[0-9]{0,2}){0,1})\\\\.*'
     loincgrep = '\\\\([0-9]{4,5}-[0-9])\\\\COMPONENT'
