@@ -30,15 +30,16 @@ class diaggregate:
 	self.cons[con].append(mod)
   def finalize(self):
     #import pdb; pdb.set_trace()
-    oo = []
+    oocm = {}; ooc = []
     for ii in self.cons:
-      self.cons[ii] = [jj for jj in self.cons[ii] if jj not in  ['@',None,'']]
-      if len(self.cons[ii]) == 0:
-	oo.append('"'+ii+'"')
-	del self.cons[ii]
-    oo += ['"'+ii+'":["'+'","'.join(self.cons[ii])+'"]' for ii in self.cons]
-    oo = ",".join(oo)
-    return oo
+      iimods = [jj for jj in self.cons[ii] if jj not in  ['@',None,'']]
+      if len(iimods) == 0:
+	ooc.append('"'+ii+'"')
+      else:
+	oocm[ii] = iimods
+    #oo += ['"'+ii+'":["'+'","'.join(self.cons[ii])+'"]' for ii in self.cons]
+    #oo = ",".join(oo)
+    return ",".join(ooc)+['"'+ii+'":["'+'","'.join(oocm[ii])+'"]' for ii in oocm]
     
 
 # this is to register a SQLite function for pulling out matching substrings (if found)
@@ -131,6 +132,7 @@ def main(cnx,fname,style,dtcp):
     cnx.create_function("shw",2,shortenwords)
     cnx.create_function("drl",1,dropletters)
     cnx.create_aggregate("dgr",2,diaggregate)
+    aggrtest = diaggregate(); aggrtstinput = cnx.execute("select patient_num,date(start_date),concept_cd,modifier_cd,NULL from observation_fact").fetchall()[0:40]
     import pdb; pdb.set_trace()
     # not quite foolproof-- still pulls in PROCID's, but in the final version we'll be filtering on this
     icd9grep = '.*\\\\([VE0-9]{3}(\\.[0-9]{0,2}){0,1})\\\\.*'
