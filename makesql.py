@@ -21,7 +21,6 @@ ddsql = "sql/dd.sql"
 # okay, this actually works
 class diaggregate:
   def __init__(self):
-    #self.mods = []
     self.cons = {}
   def step(self,con,mod):
     if con not in self.cons.keys():
@@ -29,12 +28,18 @@ class diaggregate:
     else:
       if mod not in self.cons[con]:
 	self.cons[con].append(mod)
-    #self.mods.append(mod)
-    #self.cons.append(con)
-    #print self.mods
-    #print self.cons
   def finalize(self):
-    return ",".join(",".join(self.cons[ii]) for ii in self.cons)
+    #import pdb; pdb.set_trace()
+    oo = []
+    for ii in self.cons:
+      self.cons[ii] = [jj for jj in self.cons[ii] if jj not in  ['@',None,'']]
+      if len(self.cons[ii]) == 0:
+	oo.append('"'+ii+'"')
+	del self.cons[ii]
+    oo += ['"'+ii+'":["'+'","'.join(self.cons[ii])+'"]' for ii in self.cons]
+    oo = ",".join(oo)
+    return oo
+    
 
 # this is to register a SQLite function for pulling out matching substrings (if found)
 # and otherwise returning the original string. Useful for extracting ICD9, CPT, and LOINC codes
@@ -126,6 +131,7 @@ def main(cnx,fname,style,dtcp):
     cnx.create_function("shw",2,shortenwords)
     cnx.create_function("drl",1,dropletters)
     cnx.create_aggregate("dgr",2,diaggregate)
+    import pdb; pdb.set_trace()
     # not quite foolproof-- still pulls in PROCID's, but in the final version we'll be filtering on this
     icd9grep = '.*\\\\([VE0-9]{3}(\\.[0-9]{0,2}){0,1})\\\\.*'
     loincgrep = '\\\\([0-9]{4,5}-[0-9])\\\\COMPONENT'
