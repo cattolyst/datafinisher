@@ -22,6 +22,7 @@ ddsql = "sql/dd.sql"
 class diaggregate:
   def __init__(self):
     self.cons = {}
+    self.oocm = {}; self.ooc = []
   def step(self,con,mod):
     if con not in self.cons.keys():
       self.cons[con] = [mod]
@@ -29,19 +30,59 @@ class diaggregate:
       if mod not in self.cons[con]:
 	self.cons[con].append(mod)
   def finalize(self):
-    #import pdb; pdb.set_trace()
-    oocm = {}; ooc = []
     for ii in self.cons:
       iimods = [jj for jj in self.cons[ii] if jj not in  ['@',None,'']]
       if len(iimods) == 0:
-	ooc.append('"'+ii+'"')
+	self.ooc.append('"'+ii+'"')
       else:
-	oocm[ii] = iimods
+	self.oocm[ii] = iimods
     #oo += ['"'+ii+'":["'+'","'.join(self.cons[ii])+'"]' for ii in self.cons]
     #oo = ",".join(oo)
-    return ",".join(ooc)+['"'+ii+'":["'+'","'.join(oocm[ii])+'"]' for ii in oocm]
-    
+    return ",".join(self.ooc+['"'+ii+'":["'+'","'.join(self.oocm[ii])+'"]' for ii in self.oocm])
+  
+class infoaggregate:
+  # generically jam together the ancillary fields to see if there is anything noteworthy anywhere in there
+  # note that normally you would use NULL or '' for some of these params (to bypass them), doing the aggregation 
+  # only on the ones you don't expect to see
+  def __init__(self):
+    self.cons = {}
+  def step(self,con,mod,ins,vtp,tvc,nvn,vfl,qty,unt,loc,cnf):
+    self.ofvars = {'cc':str(con),'mc':str(mod),'ix':str(ins),'vt':str(vtp),'tc':str(tvc),'vf':str(vfl),'qt':str(qty),'un':str(unt),'lc':str(loc),'cf':str(cnf)}
+    # go through each possible arg, check if it's NULL/@/''
+    # if not, add to self.cons
+    if nvn not in ['@','None',None,'']:
+      if 'nv' not in self.cons.keys():
+	self.cons['nv'] = 1
+      else:
+	self.cons['nv'] += 1
+    for ii in self.ofvars:
+      if self.ofvars[ii] not in ['@','None',None,'']:
+	if ii not in self.cons.keys():
+	  self.cons[ii] = [self.ofvars[ii]]
+	elif self.ofvars[ii] not in self.cons[ii]:
+	  self.cons[ii] += [self.ofvars[ii]]
+  def finalize(self):
+    # oh... python's dictionary format looks just like JSON, and you can convert it to a string
+    # the replace calls are just to make it a little more compact
+    if 'nv' in self.cons.keys():
+      if self.cons['nv']==1:
+	del self.cons['nv']
+      else:
+	self.cons['nv'] = str(self.cons['nv'])
+    if 'ix' in self.cons.keys():
+      if self.cons['ix'] == ['1']:
+	del self.cons['ix']
+    return (str(self.cons)[1:-1]).replace("', '","','").replace(": ",":")
 
+class debugaggregate:
+  # this is the kitchen-sink aggregator-- doesn't really condense the data, rather the purpose is to preserve everything there is to be
+  # known about each OBSERVATION_FACT entry while still complying with the one-row-per-patient-date requirement
+  def __init__(self):
+    self.entries = []
+  def step(self,con,mod,ins,vtp,tvc,nvn,vfl,qty,unt,loc,cnf):
+    self.entries.append("'cc':{0},'mc':{1},'ix':{3},'vt':{4},'tc':{5},'nv':{6},'vf':{7},'qt':{8},'un':{9},'lc':{10},'cf':{11}".format(con,mod,ins,vtp,tvc,nvn,vfl,qty,unt,loc,cnf))
+  def finalize(self):
+    return "{"+"},{".join(self.entries)+"}"
 # this is to register a SQLite function for pulling out matching substrings (if found)
 # and otherwise returning the original string. Useful for extracting ICD9, CPT, and LOINC codes
 # from concept paths where they are embedded. For ICD9 the magic pattern is:
@@ -132,8 +173,7 @@ def main(cnx,fname,style,dtcp):
     cnx.create_function("shw",2,shortenwords)
     cnx.create_function("drl",1,dropletters)
     cnx.create_aggregate("dgr",2,diaggregate)
-    aggrtest = diaggregate(); aggrtstinput = cnx.execute("select patient_num,date(start_date),concept_cd,modifier_cd,NULL from observation_fact").fetchall()[0:40]
-    import pdb; pdb.set_trace()
+    cnx.create_aggregate("igr",11,infoaggregate)
     # not quite foolproof-- still pulls in PROCID's, but in the final version we'll be filtering on this
     icd9grep = '.*\\\\([VE0-9]{3}(\\.[0-9]{0,2}){0,1})\\\\.*'
     loincgrep = '\\\\([0-9]{4,5}-[0-9])\\\\COMPONENT'
