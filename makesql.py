@@ -79,10 +79,11 @@ class debugaggregate:
   # known about each OBSERVATION_FACT entry while still complying with the one-row-per-patient-date requirement
   def __init__(self):
     self.entries = []
-  def step(self,con,mod,ins,vtp,tvc,nvn,vfl,qty,unt,loc,cnf):
-    self.entries.append("'cc':{0},'mc':{1},'ix':{3},'vt':{4},'tc':{5},'nv':{6},'vf':{7},'qt':{8},'un':{9},'lc':{10},'cf':{11}".format(con,mod,ins,vtp,tvc,nvn,vfl,qty,unt,loc,cnf))
+  def step(self,cc,mc,ix,vt,tc,nv,vf,qt,un,lc,cf):
+    self.entries.append(",".join(['"'+ii+'":"'+str(vars()[ii])+'"' for ii in ['cc','mc','ix','vt','tc','nv','vf','qt','un','lc','cf'] if vars()[ii] not in ['@',None,'','None']]))
   def finalize(self):
     return "{"+"},{".join(self.entries)+"}"
+
 # this is to register a SQLite function for pulling out matching substrings (if found)
 # and otherwise returning the original string. Useful for extracting ICD9, CPT, and LOINC codes
 # from concept paths where they are embedded. For ICD9 the magic pattern is:
@@ -159,7 +160,7 @@ def shortenwords(words,limit):
 def dropletters(intext):
 	# This function shortens words by squeezing out vowels, most non-alphas, and repeating letters
 	# the first regexp replaces multiple ocurrences of the same letter with one ocurrence of that letter
-	# the \B matches a word boundary... so we only replace vowels from inside words, not leading lettters
+	# the \B matches a word boundary... so we only remove vowels from inside words, not leading lettters
 	return re.sub(r"([a-z_ ])\1",r"\1",re.sub("\B[aeiouyAEIOUY]+","",re.sub("[^a-zA-Z _]"," ", intext)))
 
 
@@ -174,10 +175,14 @@ def main(cnx,fname,style,dtcp):
     cnx.create_function("drl",1,dropletters)
     cnx.create_aggregate("dgr",2,diaggregate)
     cnx.create_aggregate("igr",11,infoaggregate)
+    cnx.create_aggregate("xgr",11,debugaggregate)
     # not quite foolproof-- still pulls in PROCID's, but in the final version we'll be filtering on this
     icd9grep = '.*\\\\([VE0-9]{3}(\\.[0-9]{0,2}){0,1})\\\\.*'
     loincgrep = '\\\\([0-9]{4,5}-[0-9])\\\\COMPONENT'
-    
+
+    ag = cnx.execute("select concept_cd,modifier_cd,instance_num,valtype_cd,tval_char,nval_num,valueflag_cd,quantity_num,units_cd,location_cd,confidence_num from observation_fact").fetchall()[0:50]
+    da = debugaggregate()
+    import pdb; pdb.set_trace()    
     # todo: make these passable via command-line argument for customizability
     binvals = ['No','Yes']
     # DONE (ticket #1): instead of relying on sqlite_denorm.sql, create the scaffold table from inside this 
@@ -546,7 +551,6 @@ def main(cnx,fname,style,dtcp):
       tprint("created dynamic SQL for unktemp and unkfacts tables",tt);tt = time.time()
       cur.execute(unkqry0)
       tprint("created unktemp table",tt);tt = time.time()
-      import pdb; pdb.set_trace()
       cur.execute(unkqry1)
       tprint("created unkfacts table",tt);tt = time.time()
 
