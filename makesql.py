@@ -25,11 +25,11 @@ cfg.read('sqldump.cfg')
 par=dict(cfg.items("Settings"))
 """Commenting out the loop below bc it doesn't work, and we don't need
 to remove comments yet. Troubleshoot if this function is needed.
-"""
+
 for p in par:
   par[p]=par[p].split("#",1)[0].strip()
 globals().update(par)
-
+"""
 
 # this is to register a SQLite function for pulling out matching substrings (if found)
 # and otherwise returning the original string. Useful for extracting ICD9, CPT, and LOINC codes
