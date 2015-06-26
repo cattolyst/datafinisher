@@ -106,15 +106,19 @@ def ifgrp(pattern,txt):
 
 def cleanup(cnx):
     # commented out data_dictionary for now
-    t_drop = ['cdid','codefacts','codemodfacts','diagfacts','loincfacts',
-	      'fulloutput','oneperdayfacts','scaffold','unkfacts','unktemp','dfvars']
-    v_drop = ['obs_all','obs_diag_active','obs_diag_inactive','obs_labs','obs_noins']
+    t_drop = ['cdid','codefacts','codemodfacts','diagfacts','loincfacts',\
+	      'fulloutput','fulloutput2','oneperdayfacts','scaffold','unkfacts',\
+	      'unktemp','dfvars','dd2','obs_df']
+    v_drop = ['obs_all','obs_diag_active','obs_diag_inactive','obs_labs','obs_noins','binoutput']
     print "Dropping views"
-    for ii in v_drop:
-      cnx.execute("drop view if exists "+ii)
+    [cnx.execute("drop view if exists "+ii) for ii in v_drop]
+    if len(cnx.execute("pragma table_info(dd2)").fetchall()) >0:
+      print "Dropping temporary tables"
+      # note that because we're relying on dd2 in order to find the temporary tables, 
+      # those have to be dropped before the persistent tables including dd2 get dropped
+      [cnx.execute(ii[0]) for ii in cnx.execute("select distinct 'drop table if exists '||ttable from dd2").fetchall()]
     print "Dropping tables"
-    for ii in t_drop:
-      cnx.execute("drop table if exists "+ii)
+    [cnx.execute("drop table if exists "+ii) for ii in t_drop]
 
 def tprint(str,tt):
     print(str+":"+" "*(60-len(str))+"%9.4f" % round((time.time() - tt),4))
@@ -271,79 +275,6 @@ def main(cnx,fname,style,dtcp):
     cnx.commit()
     tprint("created obs_df table and index",tt);tt = time.time()
     
-    # create a couple of cleaned-up views of observation_fact
-    # replace most of the non-informative values with nulls, remove certain known redundant modifiers
-    #cur.execute("drop view if exists obs_all")
-    #cur.execute("""
-	#create view obs_all as
-	#select distinct patient_num,concept_cd,"""+rdst(dtcp)+""" start_date,modifier_cd
-	#,case when valtype_cd in ('@','N','') then null else valtype_cd end valtype_cd
-	#,instance_num
-	#,case when tval_char in ('@','') then null else tval_char end tval_char
-	#,nval_num
-	#,case when valueflag_cd in ('@','') then null else valueflag_cd end valueflag_cd
-	#,quantity_num
-	#,units_cd,location_cd,confidence_num from observation_fact
-	#where modifier_cd not in ('Labs|Aggregate:Last','Labs|Aggregate:Median','PROCORDERS:Outpatient','DiagObs:PROBLEM_LIST')
-	#and concept_cd not like 'DEM|AGEATV:%' and concept_cd not like 'DEM|SEX:%' and concept_cd not like 'DEM|VITAL:%'
-	#""");
-    #cur.execute("drop view if exists obs_noins")
-    ## it would be better to aggregate multiple numeric values of the same fact collected on the same day by median, but alas
-    ## not all versions of SQLite have support for the median function
-    #cur.execute("""
-	#create view obs_noins as 
-        #select patient_num,concept_cd,start_date,modifier_cd,valtype_cd,tval_char,avg(nval_num) nval_num
-        #,group_concat(distinct valueflag_cd) valueflag_cd,group_concat(distinct quantity_num) quantity_num
-        #,units_cd,group_concat(distinct location_cd) location_cd
-        #,group_concat(distinct confidence_num) confidence_num from (
-	  #select distinct patient_num,concept_cd,"""+rdst(dtcp)+""" start_date,modifier_cd
-	  #,case when valtype_cd in ('@','N','') then null else valtype_cd end valtype_cd
-	  #,case when tval_char in ('@','') then null else tval_char end tval_char
-	  #,nval_num
-	  #,case when valueflag_cd in ('@','') then null else valueflag_cd end valueflag_cd
-	  #,quantity_num
-	  #,units_cd,location_cd,confidence_num from observation_fact
-	  #where modifier_cd not in ('Labs|Aggregate:Last','Labs|Aggregate:Median','PROCORDERS:Outpatient','DiagObs:PROBLEM_LIST')
-	  #and concept_cd not like 'DEM|AGEATV:%' and concept_cd not like 'DEM|SEX:%' and concept_cd not like 'DEM|VITAL:%'
-        #) group by patient_num,start_date,concept_cd,modifier_cd,units_cd""");
-    #tprint("created obs_all and obs_noins views",tt);tt = time.time()
-    
-    #cnx.execute("drop view if exists obs_codemod")
-    #cnx.execute("create view obs_codemod as select distinct patient_num pn,"+rdst(dtcp)+""" sd,id,concept_cd
-		#,replace("""+dfctcode(mod="case when modifier_cd in ('','@') then null else modifier_cd end")+""",'mod',concept_cd) modifier_cd
-		#from observation_fact join cdid on concept_cd = ccd
-		#where modifier_cd not in ('Labs|Aggregate:Median','Labs|Aggregate:Last'
-		  #,'DiagObs:MEDICAL_HX','PROBLEM_STATUS_C:2','PROBLEM_STATUS_C:3','DiagObs:PROBLEM_LIST'
-		  #,'PROCORDERS:Outpatient')
-		#group by patient_num,"""+rdst(dtcp)+""",concept_cd,id
-		#""")
-    
-    #cur.execute("drop view if exists obs_diag_active")
-    ##       ,replace('{'||group_concat(distinct modifier_cd)||'}','DiagObs:','') modifier_cd
-    ##       ,replace("""+dfctcode(mod='modifier_cd').replace("'mod","||cpath'")+""",'DiagObs:','') modifier_cd 
-    ## ,replace(replace("""+dfctcode(mod='modifier_cd')+""",'DiagObs:',''),'mod',cpath) modifier_cd 
-    #cur.execute("""
-      #create view obs_diag_active as
-      #select distinct patient_num pn,"""+rdst(dtcp)+""" sd,id,cpath
-      #,replace(replace("""+dfctcode(mod='modifier_cd')+""",'DiagObs:',''),'mod',cpath) modifier_cd 
-      #from observation_fact join cdid on concept_cd = ccd 
-      #where modifier_cd not in ('DiagObs:MEDICAL_HX','PROBLEM_STATUS_C:2','PROBLEM_STATUS_C:3','DiagObs:PROBLEM_LIST')
-      #group by patient_num,"""+rdst(dtcp)+""",cpath,id
-      #""")
-    #tprint("created obs_diag_active view",tt);tt = time.time()
-
-    #cur.execute("drop view if exists obs_diag_inactive")
-##       ,replace('{'||group_concat(distinct modifier_cd)||'}','DiagObs:','') modifier_cd
-    #cur.execute("""
-      #create view obs_diag_inactive as
-      #select distinct patient_num pn,"""+rdst(dtcp)+""" sd,id,cpath
-      #,replace(replace("""+dfctcode(mod='modifier_cd')+""",'DiagObs:',''),'mod',cpath) modifier_cd 
-      #from observation_fact join cdid on concept_cd = ccd 
-      #where modifier_cd in ('DiagObs:MEDICAL_HX','PROBLEM_STATUS_C:2','PROBLEM_STATUS_C:3')
-      #group by patient_num,"""+rdst(dtcp)+""",cpath,id
-      #""")
-    #tprint("created obs_diag_inactive view",tt);tt = time.time()
-
     cur.execute("drop view if exists obs_labs")
     cur.execute("""
       create view obs_labs as
@@ -398,7 +329,6 @@ def main(cnx,fname,style,dtcp):
         coalesce(tval_char,valueflag_cd,units_cd,confidence_num,quantity_num,location_cd,valtype_cd,nval_num,-1) = -1
         and mod is not null and rule = 'UNKNOWN_DATA_ELEMENT'""")
     # of the concepts in this column, only one is recorded at a time
-    #cur.execute("update data_dictionary set rule = 'oneperday' where mxfacts = 1 and rule = 'UNKNOWN_DATA_ELEMENT'")
     cnx.commit()
     tprint("added rules to data_dictionary",tt);tt = time.time()
     
@@ -421,108 +351,6 @@ def main(cnx,fname,style,dtcp):
     cnx.execute(cnx.execute(par['fulloutput2']).fetchone()[0])
     tprint("created fulloutput2 table",tt);tt = time.time()
     
-    #cur.execute("select group_concat(colid) from data_dictionary where rule = 'code'")
-    #codesel = cur.fetchone()[0]
-    ## dynamically generate the terms in the select statement
-    ## extract the terms that meet the above criterion
-    #codeqry = "create table if not exists codefacts as select scaffold.*,"+codesel+" from scaffold "
-    ## now dynamically generate the many, many join clauses and append them to codefacts
-    ## note the string replace-- cannot alias the table name in an update statement, so no dd
-    #cur.execute("""
-	#select ' left join (select patient_num,start_date sd
-	#,replace(group_concat(distinct concept_cd),'','',''; '') '||colid||' from cdid 
-	#join obs_noins on ccd = concept_cd where id = '||cid||' group by patient_num
-        #,start_date order by patient_num,start_date) '||colid||' 
-        #on '||colid||'.patient_num = scaffold.patient_num 
-        #and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule = 'code'""")
-    #codeqry += " ".join([row[0] for row in cur.fetchall()])
-    #tprint("created dynamic SQL for codefacts",tt);tt = time.time()
-
-    #cur.execute(codeqry) 
-    #tprint("created codefacts table",tt);tt = time.time()
-    ## same pattern as above, but now for facts that consist of both codes and modifiers
-
-    ## select terms...
-    #cur.execute("select group_concat(colid) from data_dictionary where rule = 'codemod'")
-    #codemodsel = cur.fetchone()[0]
-    #codemodqry = "create table if not exists codemodfacts as select scaffold.*,"+codemodsel+" from scaffold "
-    ## ...and joins...
-    #codemodx = """
-        #select ' left join (select patient_num,start_date sd
-        #,replace(group_concat(distinct concept_cd||''=''||modifier_cd),'','',''; '') '||colid||' from cdid 
-        #join obs_noins on ccd = concept_cd where id = '||cid||' group by patient_num
-        #,start_date order by patient_num,start_date) '||colid||' 
-        #on '||colid||'.patient_num = scaffold.patient_num 
-        #and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule = 'codemod'"""
-    ##import pdb; pdb.set_trace()
-    #codemodqry += " ".join([row[0] for row in cnx.execute(codemodx).fetchall()])
-    #tprint("created dynamic SQL for codemodfacts",tt);tt = time.time()
-
-    #cur.execute(codemodqry)
-    #tprint("created codemodfacts table",tt);tt = time.time()
-    
-    # DONE: cid's (column id's i.e. groups of variables that were selected together by the researcher)
-    # ...cid's that have a ccd value of 1 (meaning there is only one distinct concept code per cid
-    # any variable that doesn't have multiple values on the same day 
-    # (except multiple instances of numeric values which get averaged)
-    # these are expected to be numeric variables
-    # TODO: create a column in obs_noins with a count of duplicates that got averaged, for QC
-    # here are the select terms, but a little more complicated than in the above cases
-    # on the fence whether to have extra column for the code
-    # ','||colid||'_cd'||
-    #cur.execute("""select 
-	#(case when mod is null then '' else ','||colid||'_mod' end)||
-	#(case when tval_char is null then '' else ','||colid||'_txt' end )||
-	#(case when valueflag_cd is null then '' else ','||colid||'_flg' end )||
-	#(case when units_cd is null then '' else ','||colid||'_unt' end )||
-	#(case when confidence_num is null then '' else ','||colid||'_cnf' end )||
-	#(case when quantity_num is null then '' else ','||colid||'_qnt' end )||
-	#(case when location_cd is null then '' else ','||colid||'_loc' end )||
-	#(case when valtype_cd is null then '' else ','||colid||'_typ' end )||
-	#(case when nval_num is null then '' else ','||colid end)
-	#from data_dictionary where rule = 'oneperday'""")
-    #oneperdaysel = " ".join([row[0] for row in cur.fetchall()])
-    #oneperdayqry = "create table if not exists oneperdayfacts as select scaffold.*" + oneperdaysel + " from scaffold "
-    ## since we're doing ALL the non-aggregate columns at the same time, the above query is designed
-    ## to produce multiple rows, so we change the earlier pattern slightly so we can glue them all together
-    ## joins
-    #cur.execute("""
-	#select 'left join (select patient_num,start_date'||
-	#(case when mod is null then '' else ',modifier_cd '||colid||'_mod ' end)||
-	#(case when tval_char is null then '' else ',tval_char '||colid||'_txt ' end )||
-	#(case when valueflag_cd is null then '' else ',valueflag_cd '||colid||'_flg ' end )||
-	#(case when units_cd is null then '' else ',units_cd '||colid||'_unt ' end )||
-	#(case when confidence_num is null then '' else ',confidence_num '||colid||'_cnf ' end )||
-	#(case when quantity_num is null then '' else ',quantity_num '||colid||'_qnt ' end )||
-	#(case when location_cd is null then '' else ',location_cd '||colid||'_loc ' end )||
-	#(case when valtype_cd is null then '' else ',valtype_cd '||colid||'_typ ' end )||
-	#(case when nval_num is null then '' else ',nval_num '||colid end)||
-	#' from obs_noins join cdid on ccd = concept_cd where id = '||cid||') '||colid||
-	#' on '||colid||'.start_date = scaffold.start_date and '||
-	#colid||'.patient_num = scaffold.patient_num'
-	#from data_dictionary where rule = 'oneperday'""")
-    #oneperdayqry += " ".join([row[0] for row in cur.fetchall()])
-    #tprint("created dynamic SQL for oneperday",tt);tt = time.time()
-
-    #cur.execute(oneperdayqry)
-    #tprint("created oneperdayfacts table",tt);tt = time.time()
-    # diagnoses output tables
-
-    #cur.execute("""
-      #select group_concat(colid||','||colid||'_inactive') from data_dictionary where rule = 'diag'
-      #""")
-    #diagsel = cur.fetchone()[0]
-    #diagqry = "create table if not exists diagfacts as select scaffold.*,"+diagsel+" from scaffold "
-    #cur.execute("""
-      #select 'left join (select pn,sd
-      #,group_concat(distinct modifier_cd) '||colid||' from obs_diag_active where id='||cid||' group by pn,sd) '||colid||' on '||colid||'.pn = scaffold.patient_num and '||colid||'.sd = scaffold.start_date' from data_dictionary where rule ='diag'
-      #union all
-      #select 'left join (select pn,sd,replace(group_concat(distinct cpath||''=''||modifier_cd),'','','';'') '||colid||'_inactive from obs_diag_inactive where id='||cid||' group by pn,sd) '||colid||'_inactive on '||colid||'_inactive.pn = scaffold.patient_num and '||colid||'_inactive.sd = scaffold.start_date' from data_dictionary where rule ='diag' 
-      #""")
-    #diagqry += " ".join([row[0] for row in cur.fetchall()])
-    #tprint("created dynamic SQL for diag",tt);tt = time.time()
-    #cur.execute(diagqry)
-    #tprint("created diagfacts table",tt);tt = time.time()
     
     # DONE: create the LOINCFACTS table which will contain: pn,sd,nval_num,units,info,and cpath as part of the colid
     loincsel = cnx.execute("""
@@ -553,80 +381,25 @@ def main(cnx,fname,style,dtcp):
     cnx.execute(loincqry)
     tprint("created loincfacts table",tt);tt = time.time()
    
-    ## DONE: fallback on giant messy concatenated strings for everything else (for now)
-    #cur.execute("""select group_concat(colid),
-	#group_concat('left join (select patient_num pn,start_date sd,megacode '||colid||
-	    #' from unktemp where id = '||cid||') '||colid||' on '||colid||'.pn = patient_num 
-	      #and '||colid||'.sd = start_date ',' '),
-	#group_concat(cid) from data_dictionary where rule = 'UNKNOWN_DATA_ELEMENT'""")
-    #unkqryvars = cur.fetchone()
-    #if unkqryvars[2] != None:
-      #unkqry0 = "create table if not exists unktemp as select patient_num,start_date,id,"
-      #unkqry0 += dfctday(cd="concept_cd",md="modifier_cd",ix="instance_num",tp="valtype_cd",\
-	#tv="tval_char",nv="nval_num",fl="valueflag_cd",qt="quantity_num",un="units_cd",\
-	  #lc="location_cd",cf="confidence_num") + " megacode from "
-      #unkqry0 += """obs_all join cdid on concept_cd = ccd
-		    #where id in ("""+unkqryvars[2]+") group by patient_num,start_date,id"
-
-      #"""
-	  #,group_concat(distinct concept_cd||coalesce('&mod='||modifier_cd,'')||
-	  #coalesce('&ins='||instance_num,'')||coalesce('&typ='||valtype_cd,'')||
-	  #coalesce('&txt='||tval_char,'')||coalesce('&num='||nval_num,'')||
-	  #coalesce('&flg='||valueflag_cd,'')||coalesce('&qty='||quantity_num,'')||
-	  #coalesce('&unt='||units_cd,'')||coalesce('&loc='||location_cd,'')||
-	  #coalesce('&cnf='||confidence_num,'')) megacode
-      #"""
-      #unkqry1 = "create table if not exists unkfacts as select scaffold.*,"+unkqryvars[0]+" from scaffold "
-      #unkqry1 += unkqryvars[1]
-      #tprint("created dynamic SQL for unktemp and unkfacts tables",tt);tt = time.time()
-      #cur.execute(unkqry0)
-      #tprint("created unktemp table",tt);tt = time.time()
-      #cur.execute(unkqry1)
-      #tprint("created unkfacts table",tt);tt = time.time()
-
-    # DONE: except we don't actually do it yet-- need to play with the variables and see the cleanest way to merge
-    # the individual tables together
-    # TODO: revise for consistent use of commas
     allsel = rdt('birth_date',dtcp)+""" birth_date, sex_cd 
       ,language_cd, race_cd, julianday(scaffold.start_date) - julianday("""+rdt('birth_date',dtcp)+") age_at_visit_days,"
-      # diagsel+','+codesel+','+codemodsel+oneperdaysel
     dd2sel = cnx.execute("select group_concat(colname) from dd2").fetchone()[0]
     allsel += dd2sel +","+loincsel
     
-    """ stuff commented out due to dd2
-        left join diagfacts df on df.patient_num = scaffold.patient_num and df.start_date = scaffold.start_date
-	left join codefacts cf on cf.patient_num = scaffold.patient_num and cf.start_date = scaffold.start_date 
-	left join codemodfacts cmf on cmf.patient_num = scaffold.patient_num and cmf.start_date = scaffold.start_date 
-	left join oneperdayfacts one on one.patient_num = scaffold.patient_num and one.start_date = scaffold.start_date 
-    """
-    #if unkqryvars[0] != None:
-      #allsel += ','+unkqryvars[0]
     allqry = "create table if not exists fulloutput as select scaffold.*,"+allsel
     allqry += """ from scaffold 
       left join patient_dimension pd on pd.patient_num = scaffold.patient_num
       left join fulloutput2 fo on fo.patient_num = scaffold.patient_num and fo.start_date = scaffold.start_date
       left join loincfacts lf on lf.patient_num = scaffold.patient_num and lf.start_date = scaffold.start_date
     """
-    #if unkqryvars[2] != None:
-      #allqry += "left join unkfacts unk on unk.patient_num = scaffold.patient_num and unk.start_date = scaffold.start_date "
     allqry += " order by patient_num, start_date"
     cnx.execute(allqry)
     tprint("created fulloutput table",tt);tt = time.time()
 
     binoutqry = """create view binoutput as select patient_num,start_date,birth_date,sex_cd
 		   ,language_cd,race_cd,age_at_visit_days,"""
-    #binoutqry += ","+",".join([" case when "+ii[1]+" is null then '"+binvals[0]+"' else '"+binvals[1]+\
-			#"' end "+ii[1] for ii in cnx.execute("pragma table_info(diagfacts)").fetchall()[2:]])
     binoutqry += dd2sel
     binoutqry += ","+",".join([ii[1] for ii in cnx.execute("pragma table_info(loincfacts)").fetchall()[2:]])
-    #binoutqry += ","+",".join([" case when "+ii[1]+" is null then '"+binvals[0]+"' else '"+binvals[1]+\
-			#"' end "+ii[1] for ii in cnx.execute("pragma table_info(codefacts)").fetchall()[2:]])
-    #binoutqry += ","+",".join([" case when "+ii[1]+" is null then '"+binvals[0]+"' else '"+binvals[1]+\
-			#"' end "+ii[1] for ii in cnx.execute("pragma table_info(codemodfacts)").fetchall()[2:]])
-    #binoutqry += ","+",".join([ii[1] for ii in cnx.execute("pragma table_info(oneperdayfacts)").fetchall()[2:]])
-    #if unkqryvars[2] != None:
-      #binoutqry += ","+",".join([" case when "+ii[1]+" is null then '"+binvals[0]+"' else '"+binvals[1]+\
-			  #"' end "+ii[1] for ii in cnx.execute("pragma table_info(unkfacts)").fetchall()[2:]])
     binoutqry += " from fulloutput"
     cnx.execute("drop view if exists binoutput")
     cnx.execute(binoutqry)
@@ -649,31 +422,7 @@ def main(cnx,fname,style,dtcp):
     tprint("TOTAL RUNTIME",startt)
     import pdb; pdb.set_trace()    
         
-    # Boom! We covered all the cases. Messy, but at least a start.
-
-    # the below yeah, I guess, but there are two big and easier to implement cases to do first
-
-
     """
-    The decision process
-      branch node
-	uses mods DONE
-	  map modifiers; single column of semicolon-delimited code=mod pairs
-	uses other columns?
-	  UNKNOWN FALLBACK, single column DONE
-	code-only DONE
-	  single column of semicolon-delimited codes
-      leaf node
-	code only DONE
-	  single 1/0 column (TODO)
-	uses code and mods only DONE
-	  map modifiers; single column of semicolon-delimited mods DONE-ish
-	uses other columns?
-	  any columns besides mods have more than one value per patient-date?
-	    UNKNOWN FALLBACK, single column DONE-ish
-	  otherwise
-	    map modifiers; single column of semicolon-delimited mods named FOO_mod; for each additional BAR, one more column FOO_BAR DONE-ish
-    
     TODO: implement a user-configurable 'rulebook' containing patterns for catching data that would otherwise fall 
     into UNKNOWN FALLBACK, and expressing in a parseable form what to do when each rule is triggered.
     DONE: The data dictionary will contain information about which built-in or user-configured rule applies for each cid
@@ -694,7 +443,7 @@ if __name__ == '__main__':
     if args.datecompress == 'week':
       dtcp = 7
     elif args.datecompress == 'month':
-      dtcp = 365.0/12
+      dtcp = 365.25/12
     else:
       dtcp = args.datecompress
       
