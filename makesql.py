@@ -158,10 +158,10 @@ def shortenwords(words,limit):
 	return " ".join(shortened)
 
 def dropletters(intext):
-	# This function shortens words by squeezing out vowels, most non-alphas, and repeating letters
-	# the first regexp replaces multiple ocurrences of the same letter with one ocurrence of that letter
-	# the \B matches a word boundary... so we only remove vowels from inside words, not leading lettters
-	return re.sub(r"([a-z_ ])\1",r"\1",re.sub("\B[aeiouyAEIOUY]+","",re.sub("[^a-zA-Z _]"," ", intext)))
+  # This function shortens words by squeezing out vowels, most non-alphas, and repeating letters
+  # the first regexp replaces multiple ocurrences of the same letter with one ocurrence of that letter
+  # the \B matches a word boundary... so we only remove vowels from inside words, not leading lettters
+  return re.sub(r"([a-z_ ])\1",r"\1",re.sub("\B[aeiouyAEIOUY]+","",re.sub("[^a-zA-Z _]"," ", intext)))
 
 
 def main(cnx,fname,style,dtcp):
@@ -182,7 +182,7 @@ def main(cnx,fname,style,dtcp):
 
     ag = cnx.execute("select concept_cd,modifier_cd,instance_num,valtype_cd,tval_char,nval_num,valueflag_cd,quantity_num,units_cd,location_cd,confidence_num from observation_fact").fetchall()[0:50]
     da = debugaggregate()
-    import pdb; pdb.set_trace()    
+    #import pdb; pdb.set_trace()    
     # todo: make these passable via command-line argument for customizability
     binvals = ['No','Yes']
     # DONE (ticket #1): instead of relying on sqlite_denorm.sql, create the scaffold table from inside this 
