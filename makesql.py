@@ -20,7 +20,7 @@ args = parser.parse_args()
 
 # location of data dictionary sql file
 ddsql = "sql/dd.sql"
-# todo: make these passable via command-line argument for customizability
+# TODO: make these passable via command-line argument for customizability
 binvals = ['No','Yes']
 # this says how many joins to permit per sub-table
 joffset = 10
@@ -292,7 +292,7 @@ def main(cnx,fname,style,dtcp):
     # DONE: instead of a with-clause temp-table create a static data dictionary table
     #		var(concept_path,concept_cd,ddomain,vid) 
     # BTW, turns out this is a way to read and execute a SQL script
-    # TODO: the shortened column names will go into this data dictionary table
+    # DONE: the shortened column names will go into this data dictionary table
     # DONE: create a filtered static copy of OBSERVATION_FACT with a vid column, maybe others
     # no vid column, relationship between concept_cd and id is not 1:1, so could get too big
     # will instead cross-walk the cdid table as needed
@@ -417,7 +417,7 @@ def main(cnx,fname,style,dtcp):
       with ff:
 	  csv.writer(ff).writerows(result)
     # DONE: write 'select * from fulloutput' to the csvfile. Should it be passed to main as a parameter? (yes)
-    # TODO: create a view that replaces the various strings with simple 1/0 values
+    # DONE: create a view that replaces the various strings with simple 1/0 values
     tprint("wrote output table to file",tt);tt = time.time()
     tprint("TOTAL RUNTIME",startt)
     import pdb; pdb.set_trace()    
