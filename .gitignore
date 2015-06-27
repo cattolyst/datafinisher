@@ -8,3 +8,4 @@
 # such as merge-spam
 nogit
 *.csv
+.Rproj.user
