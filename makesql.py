@@ -23,7 +23,7 @@ ddsql = "sql/dd.sql"
 # TODO: make these passable via command-line argument for customizability
 binvals = ['No','Yes']
 # this says how many joins to permit per sub-table
-joffset = 10
+joffset = 60
 
 
 # okay, this actually works
@@ -48,10 +48,10 @@ class diaggregate:
     #oo = ",".join(oo)
     return ",".join(self.ooc+['"'+ii+'":["'+'","'.join(self.oocm[ii])+'"]' for ii in self.oocm])
   
+# generically jam together the ancillary fields to see if there is anything noteworthy anywhere in there
+# note that normally you would use NULL or '' for some of these params (to bypass them), doing the aggregation 
+# only on the ones you don't expect to see
 class infoaggregate:
-  # generically jam together the ancillary fields to see if there is anything noteworthy anywhere in there
-  # note that normally you would use NULL or '' for some of these params (to bypass them), doing the aggregation 
-  # only on the ones you don't expect to see
   def __init__(self):
     self.cons = {}
   def step(self,con,mod,ins,vtp,tvc,nvn,vfl,qty,unt,loc,cnf):
@@ -82,9 +82,9 @@ class infoaggregate:
 	del self.cons['ix']
     return (str(self.cons)[1:-1]).replace("', '","','").replace(": ",":")
 
+# this is the kitchen-sink aggregator-- doesn't really condense the data, rather the purpose is to preserve everything there is to be
+# known about each OBSERVATION_FACT entry while still complying with the one-row-per-patient-date requirement
 class debugaggregate:
-  # this is the kitchen-sink aggregator-- doesn't really condense the data, rather the purpose is to preserve everything there is to be
-  # known about each OBSERVATION_FACT entry while still complying with the one-row-per-patient-date requirement
   def __init__(self):
     self.entries = []
   def step(self,cc,mc,ix,vt,tc,nv,vf,qt,un,lc,cf):
@@ -105,10 +105,10 @@ def ifgrp(pattern,txt):
       return rs.group(1)
 
 def cleanup(cnx):
-    # commented out data_dictionary for now
     t_drop = ['cdid','codefacts','codemodfacts','diagfacts','loincfacts',\
 	      'fulloutput','fulloutput2','oneperdayfacts','scaffold','unkfacts',\
-	      'unktemp','dfvars','dd2','obs_df']
+	      'unktemp','dfvars','dd2','obs_df','ruledefs']
+    # commented out data_dictionary for now
     v_drop = ['obs_all','obs_diag_active','obs_diag_inactive','obs_labs','obs_noins','binoutput']
     print "Dropping views"
     [cnx.execute("drop view if exists "+ii) for ii in v_drop]
@@ -152,28 +152,28 @@ def dfctcode(**kwargs):
      return oo[:-2].replace('],',']')
 
 def shortenwords(words,limit):
-	""" Initialize the data, lengths, and indexes"""
-	#get rid of the numeric codes
-	words = re.sub('[0-9]','',words)
-	wrds = words.split(); lens = map(len,wrds); idxs=range(len(lens))
-	if limit >= len(words):
-	  return(words)
-	""" sort the indexes and lengths"""
-	idxs.sort(key=lambda xx: lens[xx]); lens.sort()
-	""" initialize the threshold and the vector of 'most important' words"""
-	sumidx=0; keep=[]
-	# turned out that checking the lengths of the lens and idxs is what it takes to avoid crashes
-	while sumidx < limit and len(lens) > 0 and len(idxs) > 0:
-		sumidx += lens.pop()
-		keep.append(idxs.pop())
-	keep.sort()
-	shortened = [wrds[ii] for ii in keep]
-	return " ".join(shortened)
+  """ Initialize the data, lengths, and indexes"""
+  #get rid of the numeric codes
+  words = re.sub('[0-9]','',words)
+  wrds = words.split(); lens = map(len,wrds); idxs=range(len(lens))
+  if limit >= len(words):
+    return(words)
+  """ sort the indexes and lengths"""
+  idxs.sort(key=lambda xx: lens[xx]); lens.sort()
+  """ initialize the threshold and the vector of 'most important' words"""
+  sumidx=0; keep=[]
+  # turned out that checking the lengths of the lens and idxs is what it takes to avoid crashes
+  while sumidx < limit and len(lens) > 0 and len(idxs) > 0:
+    sumidx += lens.pop()
+    keep.append(idxs.pop())
+  keep.sort()
+  shortened = [wrds[ii] for ii in keep]
+  return " ".join(shortened)
 
+# This function shortens words by squeezing out vowels, most non-alphas, and repeating letters
+# the first regexp replaces multiple ocurrences of the same letter with one ocurrence of that letter
+# the \B matches a word boundary... so we only remove vowels from inside words, not leading lettters
 def dropletters(intext):
-  # This function shortens words by squeezing out vowels, most non-alphas, and repeating letters
-  # the first regexp replaces multiple ocurrences of the same letter with one ocurrence of that letter
-  # the \B matches a word boundary... so we only remove vowels from inside words, not leading lettters
   return re.sub(r"([a-z_ ])\1",r"\1",re.sub("\B[aeiouyAEIOUY]+","",re.sub("[^a-zA-Z _]"," ", intext)))
 
 
@@ -275,28 +275,11 @@ def main(cnx,fname,style,dtcp):
     cnx.commit()
     tprint("created obs_df table and index",tt);tt = time.time()
     
-    cur.execute("drop view if exists obs_labs")
-    cur.execute("""
-      create view obs_labs as
-      select distinct patient_num pn,"""+rdst(dtcp)+""" sd,id,cpath,avg(nval_num) nval_num
-      ,group_concat(distinct units_cd) units
-      ,case when coalesce(group_concat(distinct tval_char),'E')='E' then '' else group_concat(distinct tval_char) end ||
-      case when coalesce(group_concat(distinct valueflag_cd),'@')='@' then '' else ' flag:'||
-      group_concat(distinct valueflag_cd) end || case when count(*) > 1 then ' cnt:'||count(*) else '' end info
-      from observation_fact join cdid on concept_cd = ccd
-      where modifier_cd = '@' and ddomain = 'LOINC' or ddomain like '%COMPONENT_ID'
-      group by patient_num,"""+rdst(dtcp)+""",cpath,id
-      """)
-    tprint("created obs_labs view",tt);tt = time.time()
-    
-    # DONE: instead of a with-clause temp-table create a static data dictionary table
-    #		var(concept_path,concept_cd,ddomain,vid) 
-    # BTW, turns out this is a way to read and execute a SQL script
-    # DONE: the shortened column names will go into this data dictionary table
-    # DONE: create a filtered static copy of OBSERVATION_FACT with a vid column, maybe others
-    # no vid column, relationship between concept_cd and id is not 1:1, so could get too big
-    # will instead cross-walk the cdid table as needed
-    # ...but perhaps unnecessary now that cdid table exists
+    # create the ruledefs table
+    # the current implementation is just a temporary hack so that the rest of the script will run
+    # TODO: As per Ticket #19, this needs to be changed so the rules get read in from sql/ruledefs.csv
+    cnx.executescript(par['ruledefs'])
+    tprint("created rule definitions",tt);tt = time.time()
     
     #cur.execute("drop table if exists data_dictionary")
     with open(ddsql,'r') as ddf:
@@ -336,7 +319,7 @@ def main(cnx,fname,style,dtcp):
     cnx.execute(par['dd2'])
     tprint("created dd2 table",tt);tt = time.time()
     
-    # each row in dd2 will (soon) correspond to one column in the output
+    # each row in dd2 will correspond to one column in the output
     # here we break dd2 into more manageable chunks
     numjoins = cnx.execute("select count(distinct jcode) from dd2").fetchone()[0]
     [cnx.execute(par['chunkdd2'].format(ii,joffset)) for ii in range(0,numjoins,joffset)]
@@ -351,47 +334,15 @@ def main(cnx,fname,style,dtcp):
     cnx.execute(cnx.execute(par['fulloutput2']).fetchone()[0])
     tprint("created fulloutput2 table",tt);tt = time.time()
     
-    
-    # DONE: create the LOINCFACTS table which will contain: pn,sd,nval_num,units,info,and cpath as part of the colid
-    loincsel = cnx.execute("""
-      select replace(group_concat(distinct colid||'_'||cpath||
-      '_value,'||colid||'_'||cpath||'_units,'||colid||'_'||cpath||'_info'),'-','_')
-      from obs_labs join data_dictionary on cid = id
-      where rule = 'loinc' order by cid""").fetchone()[0]
-    loincqry = "create table if not exists loincfacts as select scaffold.*,"+loincsel+" from scaffold "
-    # okay, so the below is insane and should probably be refactored
-    # We have the usual " ".join(blah blah blah) to create the join clauses
-    # But the query that creates those clauses replaces all hyphens with underscores so that the
-    # dynamically generated column names will be legal ones... but in one place in each subquery, 
-    # there really should be a hyphen instead of an uderscore: where the cpath is matched to a 
-    # LOINC code. So, on the python side, we change those and only those underscores back to hyphens
-    # I know, pretty f*ck*d up, isn't it?
-    loincqry += re.compile("cpath=(['][[0-9]{4,5})_").sub(r'cpath=\1-'," ".join([row[0] for row in cnx.execute("""
-      select distinct
-	replace('left join (select distinct pn,sd,cpath,nval_num '||colid||'_'||cpath||'_value'||
-	',units '||colid||'_'||cpath||'_units'||
-	',info '||colid||'_'||cpath||'_info'||
-	' from obs_labs where id='||cid||
-	' and cpath='''||cpath||''') '||colid||'_'||cpath||
-	' on '||colid||'_'||cpath||'.pn = scaffold.patient_num and '||
-	colid||'_'||cpath||'.sd = scaffold.start_date','-','_')
-	from obs_labs join data_dictionary on cid = id
-	where rule = 'loinc' order by cid""").fetchall()]))
-    tprint("created dynamic SQL for loinc",tt);tt = time.time()
-    cnx.execute(loincqry)
-    tprint("created loincfacts table",tt);tt = time.time()
-   
     allsel = rdt('birth_date',dtcp)+""" birth_date, sex_cd 
-      ,language_cd, race_cd, julianday(scaffold.start_date) - julianday("""+rdt('birth_date',dtcp)+") age_at_visit_days,"
+      ,language_cd, race_cd, julianday(scaffold.start_date) - julianday("""+rdt('birth_date',dtcp)+") age_at_visit_days,"""
     dd2sel = cnx.execute("select group_concat(colname) from dd2").fetchone()[0]
-    allsel += dd2sel +","+loincsel
     
-    allqry = "create table if not exists fulloutput as select scaffold.*,"+allsel
+    allqry = "create table if not exists fulloutput as select scaffold.*," + allsel + dd2sel
     allqry += """ from scaffold 
       left join patient_dimension pd on pd.patient_num = scaffold.patient_num
       left join fulloutput2 fo on fo.patient_num = scaffold.patient_num and fo.start_date = scaffold.start_date
-      left join loincfacts lf on lf.patient_num = scaffold.patient_num and lf.start_date = scaffold.start_date
-    """
+      """
     allqry += " order by patient_num, start_date"
     cnx.execute(allqry)
     tprint("created fulloutput table",tt);tt = time.time()
@@ -399,7 +350,7 @@ def main(cnx,fname,style,dtcp):
     binoutqry = """create view binoutput as select patient_num,start_date,birth_date,sex_cd
 		   ,language_cd,race_cd,age_at_visit_days,"""
     binoutqry += dd2sel
-    binoutqry += ","+",".join([ii[1] for ii in cnx.execute("pragma table_info(loincfacts)").fetchall()[2:]])
+    #binoutqry += ","+",".join([ii[1] for ii in cnx.execute("pragma table_info(loincfacts)").fetchall()[2:]])
     binoutqry += " from fulloutput"
     cnx.execute("drop view if exists binoutput")
     cnx.execute(binoutqry)
@@ -416,8 +367,6 @@ def main(cnx,fname,style,dtcp):
       result = cnx.execute("select * from "+finalview).fetchall()
       with ff:
 	  csv.writer(ff).writerows(result)
-    # DONE: write 'select * from fulloutput' to the csvfile. Should it be passed to main as a parameter? (yes)
-    # DONE: create a view that replaces the various strings with simple 1/0 values
     tprint("wrote output table to file",tt);tt = time.time()
     tprint("TOTAL RUNTIME",startt)
     import pdb; pdb.set_trace()    
