@@ -237,26 +237,12 @@ def main(cnx,fname,style,dtcp):
     # turns out it was not necessary to create an empty table first for scaffold-- the date problem 
     # that this was supposed to solve was being caused by something else, so here is the more concise
     # version that may also be a little faster
-    cnx.execute("""create table if not exists scaffold as
-    select distinct patient_num, """+rdst(dtcp)+""" start_date
-    from observation_fact order by patient_num, start_date;
-    """)
+    cnx.execute(create_scaffold)
     cnx.execute("CREATE UNIQUE INDEX if not exists df_ix_scaffold ON scaffold (patient_num,start_date) ")
     tprint("created scaffold table and index",tt);tt = time.time()
 
     # cnx.execute("drop table if exists cdid")
-    cnx.execute("""
-	create table if not exists cdid as
-	select distinct concept_cd ccd,id
-	,substr(concept_cd,1,instr(concept_cd,':')-1) ddomain
-	,cd.concept_path cpath
-	from concept_dimension cd 
-	join (select min(id) id,min(concept_path) concept_path 
-	from variable 
-	where name not like '%old at visit' and name not in ('Living','Deceased','Not recorded','Female','Male','Unknown')
-	group by item_key) vr
-	on cd.concept_path like vr.concept_path||'%'
-	""")
+    cnx.execute(cdid_tab)
     tprint("created cdid table",tt);tt = time.time()
 
     # diagnoses
@@ -278,7 +264,9 @@ def main(cnx,fname,style,dtcp):
     # create the ruledefs table
     # the current implementation is just a temporary hack so that the rest of the script will run
     # TODO: As per Ticket #19, this needs to be changed so the rules get read in from sql/ruledefs.csv
-    cnx.executescript(par['ruledefs'])
+    import ruledef #is there something I need to do here if it's not in the same directory as makesql.py?
+    ruledef.ruledef_read()
+    
     tprint("created rule definitions",tt);tt = time.time()
     
     #cur.execute("drop table if exists data_dictionary")
@@ -290,27 +278,13 @@ def main(cnx,fname,style,dtcp):
     tprint("created data_dictionary",tt);tt = time.time()
 
     # diagnosis
-    cur.execute("""
-	update data_dictionary set rule = 'diag' where ddomain like '%ICD9%DX_ID%' or ddomain like '%DX_ID%ICD9%'
-	and rule = 'UNKNOWN_DATA_ELEMENT'
-	""")
+    cur.execute(dd_diag)
     # LOINC
-    cur.execute("""
-	update data_dictionary set rule = 'loinc' where ddomain like '%LOINC%COMPONENT_ID%' 
-	or ddomain like '%COMPONENT_ID%LOINC%'
-	and rule = 'UNKNOWN_DATA_ELEMENT'
-	""")
+    cur.execute(dd_loinc)
     # code-only
-    cur.execute("""
-        update data_dictionary set rule = 'code' where
-        coalesce(mod,tval_char,valueflag_cd,units_cd,confidence_num,quantity_num,location_cd,valtype_cd,nval_num,-1) = -1
-        and rule = 'UNKNOWN_DATA_ELEMENT'
-        """)
+    cur.execute(dd_code_only)
     # code-and-mod only
-    cur.execute("""
-        update data_dictionary set rule = 'codemod' where
-        coalesce(tval_char,valueflag_cd,units_cd,confidence_num,quantity_num,location_cd,valtype_cd,nval_num,-1) = -1
-        and mod is not null and rule = 'UNKNOWN_DATA_ELEMENT'""")
+    cur.execute(dd_codemod_only)
     # of the concepts in this column, only one is recorded at a time
     cnx.commit()
     tprint("added rules to data_dictionary",tt);tt = time.time()
