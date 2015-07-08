@@ -124,7 +124,7 @@ def tprint(str,tt):
     print(str+":"+" "*(60-len(str))+"%9.4f" % round((time.time() - tt),4))
       
 # The rdt and rdst functions aren't exactly user-defined SQLite functions...
-# They are python function that emit a string to concatenate into a larger SQL query
+# They are python functions that emit a string to concatenate into a larger SQL query
 # and send back to SQL... because SQLite has a native julianday() function that's super
 # easy to use. So, think of rdt and rdst as pseudo-UDFs
 def rdt(datecol,factor):
