@@ -176,7 +176,19 @@ def shortenwords(words,limit):
 def dropletters(intext):
   return re.sub(r"([a-z_ ])\1",r"\1",re.sub("\B[aeiouyAEIOUY]+","",re.sub("[^a-zA-Z _]"," ", intext)))
 
+def create_ruledef(cnx, filename):
+	print filename
+	cnx.execute("DROP TABLE IF EXISTS ruledefs")
+	cnx.execute("CREATE TABLE ruledefs (sub_slct_std UNKNOWN_TYPE_STRING, sub_payload UNKNOWN_TYPE_STRING, sub_frm_std UNKNOWN_TYPE_STRING, sbwr UNKNOWN_TYPE_STRING, sub_grp_std UNKNOWN_TYPE_STRING, presuffix UNKNOWN_TYPE_STRING, suffix UNKNOWN_TYPE_STRING, concode UNKNOWN_TYPE_BOOLEAN NOT NULL, rule UNKNOWN_TYPE_STRING NOT NULL, grouping INTEGER NOT NULL, subgrouping INTEGER NOT NULL, in_use UNKNOWN_TYPE_BOOLEAN NOT NULL)")
+	to_db = []
+	with open('ruledefs.csv') as csvfile:
+	  readCSV = csv.reader(csvfile, skipinitialspace=True)
+	  for row in readCSV:
+	      to_db.append(row)
+	cnx.executemany("INSERT INTO ruledefs VALUES (?,?,?,?,?,?,?,?,?,?,?,?);", to_db[1:])
+	cnx.commit()
 
+	
 def main(cnx,fname,style,dtcp):
     tt = time.time(); startt = tt
     # create a cursor, though most of the time turns out we don't need it because the connection
@@ -237,12 +249,12 @@ def main(cnx,fname,style,dtcp):
     # turns out it was not necessary to create an empty table first for scaffold-- the date problem 
     # that this was supposed to solve was being caused by something else, so here is the more concise
     # version that may also be a little faster
-    cnx.execute(create_scaffold)
+    cnx.execute(par['create_scaffold'])
     cnx.execute("CREATE UNIQUE INDEX if not exists df_ix_scaffold ON scaffold (patient_num,start_date) ")
     tprint("created scaffold table and index",tt);tt = time.time()
 
     # cnx.execute("drop table if exists cdid")
-    cnx.execute(cdid_tab)
+    cnx.execute(par['cdid_tab'])
     tprint("created cdid table",tt);tt = time.time()
 
     # diagnoses
@@ -264,11 +276,9 @@ def main(cnx,fname,style,dtcp):
     # create the ruledefs table
     # the current implementation is just a temporary hack so that the rest of the script will run
     # TODO: As per Ticket #19, this needs to be changed so the rules get read in from sql/ruledefs.csv
-    import ruledef #is there something I need to do here if it's not in the same directory as makesql.py?
-    ruledef.ruledef_read()
-    
+    create_ruledef(cnx, par['ruledefs'])
+        
     tprint("created rule definitions",tt);tt = time.time()
-    
     #cur.execute("drop table if exists data_dictionary")
     with open(ddsql,'r') as ddf:
 	ddcreate = ddf.read()
@@ -278,13 +288,13 @@ def main(cnx,fname,style,dtcp):
     tprint("created data_dictionary",tt);tt = time.time()
 
     # diagnosis
-    cur.execute(dd_diag)
+    cur.execute(par['dd_diag'])
     # LOINC
-    cur.execute(dd_loinc)
+    cur.execute(par['dd_loinc'])
     # code-only
-    cur.execute(dd_code_only)
+    cur.execute(par['dd_code_only'])
     # code-and-mod only
-    cur.execute(dd_codemod_only)
+    cur.execute(par['dd_codemod_only'])
     # of the concepts in this column, only one is recorded at a time
     cnx.commit()
     tprint("added rules to data_dictionary",tt);tt = time.time()
