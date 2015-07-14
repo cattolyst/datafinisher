@@ -32,7 +32,7 @@ def main(cnx,fname,style,dtcp):
     tt = time.time(); startt = tt
     # create a cursor, though most of the time turns out we don't need it because the connection
     # also has an execute() method.
-    cur = cnx.cursor()
+    #cur = cnx.cursor()
     # declare some custom functions to use within SQL queries (awesome!)
     cnx.create_function("grs",2,ifgrp)
     cnx.create_function("shw",2,shortenwords)
