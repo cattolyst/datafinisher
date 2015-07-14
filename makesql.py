@@ -44,7 +44,6 @@ def main(cnx,fname,style,dtcp):
     icd9grep = '.*\\\\([VE0-9]{3}(\\.[0-9]{0,2}){0,1})\\\\.*'
     loincgrep = '\\\\([0-9]{4,5}-[0-9])\\\\COMPONENT'
 
-    #import pdb; pdb.set_trace()    
     # DONE (ticket #1): instead of relying on sqlite_denorm.sql, create the scaffold table from inside this 
     # script by putting the appropriate SQL commands into character strings and then passing those
     # strings as arguments to execute() (see below for an example of cur.execute() usage (cur just happens 
@@ -121,19 +120,19 @@ def main(cnx,fname,style,dtcp):
     #cur.execute("drop table if exists data_dictionary")
     with open(ddsql,'r') as ddf:
 	ddcreate = ddf.read()
-    cur.execute(ddcreate)
+    cnx.execute(ddcreate)
     # rather than running the same complicated select statement multiple times for each rule in data_dictionary
     # lets just run each selection criterion once and save it as a tag in the new RULE column
     tprint("created data_dictionary",tt);tt = time.time()
 
     # diagnosis
-    cur.execute(par['dd_diag'])
+    cnx.execute(par['dd_diag'])
     # LOINC
-    cur.execute(par['dd_loinc'])
+    cnx.execute(par['dd_loinc'])
     # code-only
-    cur.execute(par['dd_code_only'])
+    cnx.execute(par['dd_code_only'])
     # code-and-mod only
-    cur.execute(par['dd_codemod_only'])
+    cnx.execute(par['dd_codemod_only'])
     # of the concepts in this column, only one is recorded at a time
     cnx.commit()
     tprint("added rules to data_dictionary",tt);tt = time.time()
