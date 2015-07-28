@@ -130,6 +130,8 @@ def main(cnx,fname,style,dtcp):
     # LOINC
     cnx.execute(par['dd_loinc'])
     # code-only
+    cnx.execute(par['dd_vvital'])
+    # visit vitals
     cnx.execute(par['dd_code_only'])
     # code-and-mod only
     cnx.execute(par['dd_codemod_only'])
