@@ -134,6 +134,8 @@ def main(cnx,fname,style,dtcp):
     # code-and-mod only
     cnx.execute(par['dd_codemod_only'])
     # of the concepts in this column, only one is recorded at a time
+    cnx.execute(par['dd_vvitals'])
+    # of the concepts in this column, only one is recorded at a time
     cnx.commit()
     tprint("added rules to data_dictionary",tt);tt = time.time()
     
