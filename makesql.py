@@ -87,7 +87,7 @@ def main(cnx,fname,style,dtcp):
     # turns out it was not necessary to create an empty table first for scaffold-- the date problem 
     # that this was supposed to solve was being caused by something else, so here is the more concise
     # version that may also be a little faster
-    cnx.execute(par['create_scaffold'])
+    cnx.execute(par['create_scaffold'].format(rdst(dtcp)))
     cnx.execute("CREATE UNIQUE INDEX if not exists df_ix_scaffold ON scaffold (patient_num,start_date) ")
     tprint("created scaffold table and index",tt);tt = time.time()
 
@@ -166,6 +166,7 @@ def main(cnx,fname,style,dtcp):
       left join fulloutput2 fo on fo.patient_num = scaffold.patient_num and fo.start_date = scaffold.start_date
       """
     allqry += " order by patient_num, start_date"
+    import pdb;pdb.set_trace()
     cnx.execute(allqry)
     tprint("created fulloutput table",tt);tt = time.time()
 
