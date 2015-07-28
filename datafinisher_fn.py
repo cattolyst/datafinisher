@@ -81,8 +81,7 @@ def ifgrp(pattern,txt):
 def cleanup(cnx):
     t_drop = ['cdid','codefacts','codemodfacts','diagfacts','loincfacts',\
 	      'fulloutput','fulloutput2','oneperdayfacts','scaffold','unkfacts',\
-	      'unktemp','dfvars','dd2','obs_df','ruledefs']
-    # commented out data_dictionary for now
+	      'unktemp','dfvars','dd2','obs_df','ruledefs','data_dictionary']
     v_drop = ['obs_all','obs_diag_active','obs_diag_inactive','obs_labs','obs_noins','binoutput']
     print "Dropping views"
     [cnx.execute("drop view if exists "+ii) for ii in v_drop]
