@@ -130,6 +130,8 @@ def main(cnx,fname,style,dtcp):
     # LOINC
     cnx.execute(par['dd_loinc'])
     # code-only
+    cnx.execute(par['dd_vvital'])
+    # visit vitals
     cnx.execute(par['dd_code_only'])
     # code-and-mod only
     cnx.execute(par['dd_codemod_only'])
@@ -151,6 +153,7 @@ def main(cnx,fname,style,dtcp):
     tprint("assigned chunks to dd2",tt);tt = time.time()
     
     # code for creating all the temporary tables
+    import pdb; pdb.set_trace()
     [cnx.execute(ii[0]) for ii in cnx.execute(par['maketables']).fetchall()]
     tprint("created all tables described by dd2",tt);tt = time.time()
     
