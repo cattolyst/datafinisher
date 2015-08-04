@@ -153,7 +153,6 @@ def main(cnx,fname,style,dtcp):
     tprint("assigned chunks to dd2",tt);tt = time.time()
     
     # code for creating all the temporary tables
-    import pdb; pdb.set_trace()
     [cnx.execute(ii[0]) for ii in cnx.execute(par['maketables']).fetchall()]
     tprint("created all tables described by dd2",tt);tt = time.time()
     
@@ -171,7 +170,6 @@ def main(cnx,fname,style,dtcp):
       left join fulloutput2 fo on fo.patient_num = scaffold.patient_num and fo.start_date = scaffold.start_date
       """
     allqry += " order by patient_num, start_date"
-    import pdb;pdb.set_trace()
     cnx.execute(allqry)
     tprint("created fulloutput table",tt);tt = time.time()
 
@@ -224,8 +222,6 @@ if __name__ == '__main__':
     else:
       dtcp = args.datecompress
       
-    #import pdb; pdb.set_trace();
-    #import code; code.interact(local=vars())
     if args.cleanup:
       cleanup(con)
     else:
