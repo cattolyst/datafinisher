@@ -163,8 +163,7 @@ def main(cnx,fname,style,dtcp):
     
     allsel = rdt('birth_date',dtcp)+""" birth_date, sex_cd 
       ,language_cd, race_cd, julianday(scaffold.start_date) - julianday("""+rdt('birth_date',dtcp)+") age_at_visit_days,"""
-    #dd2sel = cnx.execute("select group_concat(colname) from dd2").fetchone()[0]
-    dd2sel = cnx.execute(par['dd2sel']).fetchone()[0]
+    dd2sel = cnx.execute("select group_concat(colname) from dd2").fetchone()[0]
     
     allqry = "create table if not exists fulloutput as select scaffold.*," + allsel + dd2sel
     allqry += """ from scaffold 
@@ -175,9 +174,10 @@ def main(cnx,fname,style,dtcp):
     cnx.execute(allqry)
     tprint("created fulloutput table",tt);tt = time.time()
 
+    dd2selbin = cnx.execute(par['dd2selbin']).fetchone()[0]
     binoutqry = """create view binoutput as select patient_num,start_date,birth_date,sex_cd
 		   ,language_cd,race_cd,age_at_visit_days,"""
-    binoutqry += dd2sel
+    binoutqry += dd2selbin
     #binoutqry += ","+",".join([ii[1] for ii in cnx.execute("pragma table_info(loincfacts)").fetchall()[2:]])
     binoutqry += " from fulloutput"
     cnx.execute("drop view if exists binoutput")
