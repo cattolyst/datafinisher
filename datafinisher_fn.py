@@ -152,13 +152,13 @@ def dropletters(intext):
 def create_ruledef(cnx, filename):
 	print filename
 	cnx.execute("DROP TABLE IF EXISTS ruledefs")
-	cnx.execute("CREATE TABLE ruledefs (sub_slct_std UNKNOWN_TYPE_STRING, sub_payload UNKNOWN_TYPE_STRING, sub_frm_std UNKNOWN_TYPE_STRING, sbwr UNKNOWN_TYPE_STRING, sub_grp_std UNKNOWN_TYPE_STRING, presuffix UNKNOWN_TYPE_STRING, suffix UNKNOWN_TYPE_STRING, concode UNKNOWN_TYPE_BOOLEAN NOT NULL, rule UNKNOWN_TYPE_STRING NOT NULL, grouping INTEGER NOT NULL, subgrouping INTEGER NOT NULL, in_use UNKNOWN_TYPE_BOOLEAN NOT NULL)")
+	cnx.execute("CREATE TABLE ruledefs (sub_slct_std UNKNOWN_TYPE_STRING, sub_payload UNKNOWN_TYPE_STRING, sub_frm_std UNKNOWN_TYPE_STRING, sbwr UNKNOWN_TYPE_STRING, sub_grp_std UNKNOWN_TYPE_STRING, presuffix UNKNOWN_TYPE_STRING, suffix UNKNOWN_TYPE_STRING, concode UNKNOWN_TYPE_BOOLEAN NOT NULL, rule UNKNOWN_TYPE_STRING NOT NULL, grouping INTEGER NOT NULL, subgrouping INTEGER NOT NULL, in_use UNKNOWN_TYPE_BOOLEAN NOT NULL, criterion UNKNOWN_TYPE_STRING)")
 	to_db = []
 	with open(filename) as csvfile:
 	  readCSV = csv.reader(csvfile, skipinitialspace=True)
 	  for row in readCSV:
 	      to_db.append(row)
-	cnx.executemany("INSERT INTO ruledefs VALUES (?,?,?,?,?,?,?,?,?,?,?,?);", to_db[1:])
+	cnx.executemany("INSERT INTO ruledefs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?);", to_db[1:])
 	cnx.commit()
 
 	
