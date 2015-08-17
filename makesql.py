@@ -125,18 +125,19 @@ def main(cnx,fname,style,dtcp):
     # lets just run each selection criterion once and save it as a tag in the new RULE column
     tprint("created data_dictionary",tt);tt = time.time()
 
+    [cnx.execute(ii[0]) for ii in cnx.execute(par['dd_criteria']).fetchall()]
     # diagnosis
-    cnx.execute(par['dd_diag'])
+    #cnx.execute(par['dd_diag'])
     # LOINC
-    cnx.execute(par['dd_loinc'])
+    #cnx.execute(par['dd_loinc'])
     # code-only
-    cnx.execute(par['dd_vvital'])
+    #cnx.execute(par['dd_vvital'])
     # visit vitals
-    cnx.execute(par['dd_code_only'])
+    #cnx.execute(par['dd_code_only'])
     # code-and-mod only
-    cnx.execute(par['dd_codemod_only'])
+    #cnx.execute(par['dd_codemod_only'])
     # of the concepts in this column, only one is recorded at a time
-    cnx.execute(par['dd_vvitals'])
+    #cnx.execute(par['dd_vvitals'])
     # of the concepts in this column, only one is recorded at a time
     cnx.commit()
     tprint("added rules to data_dictionary",tt);tt = time.time()
@@ -162,7 +163,8 @@ def main(cnx,fname,style,dtcp):
     
     allsel = rdt('birth_date',dtcp)+""" birth_date, sex_cd 
       ,language_cd, race_cd, julianday(scaffold.start_date) - julianday("""+rdt('birth_date',dtcp)+") age_at_visit_days,"""
-    dd2sel = cnx.execute("select group_concat(colname) from dd2").fetchone()[0]
+    #dd2sel = cnx.execute("select group_concat(colname) from dd2").fetchone()[0]
+    dd2sel = cnx.execute(par['dd2sel']).fetchone()[0]
     
     allqry = "create table if not exists fulloutput as select scaffold.*," + allsel + dd2sel
     allqry += """ from scaffold 

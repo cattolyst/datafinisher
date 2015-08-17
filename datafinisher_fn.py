@@ -52,7 +52,8 @@ class infoaggregate:
       else:
 	self.cons['nv'] = str(self.cons['nv'])
     if 'ix' in self.cons.keys():
-      if self.cons['ix'] == ['1']:
+      if len(self.cons['ix']) == 1:
+      #if self.cons['ix'] == ['1']:
 	del self.cons['ix']
     return (str(self.cons)[1:-1]).replace("', '","','").replace(": ",":")
 
