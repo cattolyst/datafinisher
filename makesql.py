@@ -191,6 +191,7 @@ def main(cnx,fname,style,dtcp):
       
     if fname.lower() != 'none':
       ff = open(fname,'wb')
+      # below line generates the CSV header row
       csv.writer(ff).writerow([ii[1] for ii in con.execute("PRAGMA table_info("+finalview+")").fetchall()])
       result = cnx.execute("select * from "+finalview).fetchall()
       with ff:
