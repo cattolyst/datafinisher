@@ -1,13 +1,12 @@
 """ Generate dynamic data extraction SQL for DataBuilder output files
 ---------------------------------------------------------------------
+usage: df.py [-h] [-c] [-v CSVFILE] [-s {concat,simple}] [-d DATECOMPRESS] dbfile
     
- Usage:
-   makesql sqltemplate.sql dbname.db
 """
 
 import sqlite3 as sq,argparse,re,csv,time,ConfigParser,pdb
 cfg = ConfigParser.RawConfigParser()
-cfg.read('sqldump.cfg')
+cfg.read('sql/df.cfg')
 par=dict(cfg.items("Settings"))
 
 parser = argparse.ArgumentParser()
@@ -25,7 +24,7 @@ binvals = ['No','Yes']
 # this says how many joins to permit per sub-table
 joffset = 60
 
-from datafinisher_fn import *
+from df_fn import *
 
 
 def main(cnx,fname,style,dtcp):
@@ -67,7 +66,7 @@ def main(cnx,fname,style,dtcp):
       if dtcp != olddtcp:
 	dtcp = olddtcp[0][0]
 	print "Warning! Ignoring requested datecompress value and using previously stored value of "+str(dtcp)
-	print "To get rid of it, do `python makesql.py -c dbfile`"
+	print "To get rid of it, do `python df.py -c dbfile`"
     else:
       print "Uh oh. Something is wrong there should not be more than one 'dtcp' entry in dfvars, debug time"
         
