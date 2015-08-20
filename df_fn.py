@@ -138,7 +138,6 @@ def shortenwords(words,limit):
 def dropletters(intext):
   return re.sub(r"([a-z_ ])\1",r"\1",re.sub("\B[aeiouyAEIOUY]+","",re.sub("[^a-zA-Z _]"," ", intext)))
 
-
 ###############################################################################
 # Functions used in df.py directly                                            #
 ###############################################################################
