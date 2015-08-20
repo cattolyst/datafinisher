@@ -24,11 +24,11 @@ Note: This code modifies the original databuilder .db file, but only adds tables
 
 Here are the functional parts:
 
-* df.py:                  The part you run
-* df_fn.py                Declarations of functions and other stuff used by df.py
-* ruledefs.csv            Customizable rules file
-* sql/                    SQL scripts and data used by df
- * sql/datafinisher.db     A SQLite db with some lookup tables, at the moment it contains only MODIFIER_DIMENSION (used only if the one in the input file is empty)
- * sql/dd.sql              A script for creating the DATA_DICTIONARY table
- * sql/df.cfg              The config file, which includes many snippets of SQL that are called from various places in df.py
+* *df.py*                  The part you run
+* *df_fn.py*                Declarations of functions and other stuff used by df.py
+* *ruledefs.csv*            Customizable rules file
+* *sql/*                    SQL scripts and data used by df
+ * *sql/datafinisher.db*     A SQLite db with some lookup tables, at the moment it contains only MODIFIER_DIMENSION (used only if the one in the input file is empty)
+ * *sql/dd.sql*              A script for creating the DATA_DICTIONARY table
+ * *sql/df.cfg*              The config file, which includes many snippets of SQL that are called from various places in df.py
 
