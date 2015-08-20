@@ -95,8 +95,11 @@ def rdt(datecol,factor):
     if factor == 1:
       return 'date('+datecol+')'
     else:
-      return 'date(round(julianday('+datecol+')/'+str(factor)+')*'+str(factor)+')'
+      factor = str(factor)
+      return 'date(round(julianday('+datecol+')/'+factor+')*'+factor+')'
     
+# this one is a wrapper for rdt but with 'start_date' hardcoded as first arg
+# because it occurrs so often
 def rdst(factor):
     return rdt('start_date',factor)
 
