@@ -61,6 +61,7 @@ def main(cnx,fname,style,dtcp):
     
     # certain values should not be changed after the first run
     cnx.execute("CREATE TABLE if not exists dfvars ( varname TEXT, textval TEXT, numval NUM )")
+    # TODO: oldtcp is a candidate for renaming
     olddtcp = cnx.execute("select numval from dfvars where varname = 'dtcp'").fetchall()
     if len(olddtcp) == 0:
       cnx.execute("insert into dfvars (varname,numval) values ('dtcp',"+str(dtcp)+")")
@@ -128,7 +129,6 @@ def main(cnx,fname,style,dtcp):
     # TODO: As per Ticket #19, this needs to be changed so the rules get read 
     # in from sql/ruledefs.csv
     create_ruledef(cnx, par['ruledefs'])
-        
     tprint("created rule definitions",tt);tt = time.time()
 
     with open(ddsql,'r') as ddf:
@@ -162,6 +162,8 @@ def main(cnx,fname,style,dtcp):
     cnx.execute(cnx.execute(par['fulloutput2']).fetchone()[0])
     tprint("created fulloutput2 table",tt);tt = time.time()
     
+    # TODO: lots of variables being created here, therefore candidates for renaming
+    # or refactoring to make simpler
     allsel = rdt('birth_date',dtcp)+""" birth_date, sex_cd 
       ,language_cd, race_cd, julianday(scaffold.start_date) - julianday("""+rdt('birth_date',dtcp)+") age_at_visit_days,"""
     dd2sel = cnx.execute("select group_concat(colname) from dd2").fetchone()[0]
@@ -190,6 +192,7 @@ def main(cnx,fname,style,dtcp):
     else:
       finalview = 'fulloutput'
       
+    # i.e. to not create a .csv file, pass 'none' in the -v argument
     if fname.lower() != 'none':
       ff = open(fname,'wb')
       # below line generates the CSV header row
@@ -197,6 +200,7 @@ def main(cnx,fname,style,dtcp):
       result = cnx.execute("select * from "+finalview).fetchall()
       with ff:
 	  csv.writer(ff).writerows(result)
+
     tprint("wrote output table to file",tt);tt = time.time()
     tprint("TOTAL RUNTIME",startt)
 
