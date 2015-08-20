@@ -1,5 +1,9 @@
 import sqlite3 as sq,argparse,re,csv,time,ConfigParser,pdb
 
+###############################################################################
+# Functions and methods to use within SQLite                                  #
+###############################################################################
+
 # okay, this actually works
 class diaggregate:
   def __init__(self):
@@ -79,24 +83,6 @@ def ifgrp(pattern,txt):
     else:
       return rs.group(1)
 
-def cleanup(cnx):
-    t_drop = ['cdid','codefacts','codemodfacts','diagfacts','loincfacts',\
-	      'fulloutput','fulloutput2','oneperdayfacts','scaffold','unkfacts',\
-	      'unktemp','dfvars','dd2','obs_df','ruledefs','data_dictionary']
-    v_drop = ['obs_all','obs_diag_active','obs_diag_inactive','obs_labs','obs_noins','binoutput']
-    print "Dropping views"
-    [cnx.execute("drop view if exists "+ii) for ii in v_drop]
-    if len(cnx.execute("pragma table_info(dd2)").fetchall()) >0:
-      print "Dropping temporary tables"
-      # note that because we're relying on dd2 in order to find the temporary tables, 
-      # those have to be dropped before the persistent tables including dd2 get dropped
-      [cnx.execute(ii[0]) for ii in cnx.execute("select distinct 'drop table if exists '||ttable from dd2").fetchall()]
-    print "Dropping tables"
-    [cnx.execute("drop table if exists "+ii) for ii in t_drop]
-
-def tprint(str,tt):
-    print(str+":"+" "*(60-len(str))+"%9.4f" % round((time.time() - tt),4))
-      
 # The rdt and rdst functions aren't exactly user-defined SQLite functions...
 # They are python function that emit a string to concatenate into a larger SQL query
 # and send back to SQL... because SQLite has a native julianday() function that's super
@@ -125,6 +111,7 @@ def dfctcode(**kwargs):
        oo += """coalesce('{0}:['||group_concat(distinct '"'||{1}||'"')||'],','')||""".format(key,val)
      return oo[:-2].replace('],',']')
 
+# Omit "least relevant" words to make a character string shorter
 def shortenwords(words,limit):
   """ Initialize the data, lengths, and indexes"""
   #get rid of the numeric codes
@@ -144,12 +131,38 @@ def shortenwords(words,limit):
   shortened = [wrds[ii] for ii in keep]
   return " ".join(shortened)
 
-# This function shortens words by squeezing out vowels, most non-alphas, and repeating letters
-# the first regexp replaces multiple ocurrences of the same letter with one ocurrence of that letter
-# the \B matches a word boundary... so we only remove vowels from inside words, not leading lettters
+# This function shortens words by squeezing out vowels, most non-alphas, and 
+# repeating letters the first regexp replaces multiple ocurrences of the same 
+# letter with one ocurrence of that letter the \B matches a word boundary... 
+# so we only remove vowels from inside words, not leading lettters
 def dropletters(intext):
   return re.sub(r"([a-z_ ])\1",r"\1",re.sub("\B[aeiouyAEIOUY]+","",re.sub("[^a-zA-Z _]"," ", intext)))
 
+
+###############################################################################
+# Functions used in df.py directly                                            #
+###############################################################################
+
+def cleanup(cnx):
+    t_drop = ['cdid','codefacts','codemodfacts','diagfacts','loincfacts',\
+	      'fulloutput','fulloutput2','oneperdayfacts','scaffold','unkfacts',\
+	      'unktemp','dfvars','dd2','obs_df','ruledefs','data_dictionary']
+    v_drop = ['obs_all','obs_diag_active','obs_diag_inactive','obs_labs','obs_noins','binoutput']
+    print "Dropping views"
+    [cnx.execute("drop view if exists "+ii) for ii in v_drop]
+    if len(cnx.execute("pragma table_info(dd2)").fetchall()) >0:
+      print "Dropping temporary tables"
+      # note that because we're relying on dd2 in order to find the temporary tables, 
+      # those have to be dropped before the persistent tables including dd2 get dropped
+      [cnx.execute(ii[0]) for ii in cnx.execute("select distinct 'drop table if exists '||ttable from dd2").fetchall()]
+    print "Dropping tables"
+    [cnx.execute("drop table if exists "+ii) for ii in t_drop]
+
+def tprint(str,tt):
+    print(str+":"+" "*(60-len(str))+"%9.4f" % round((time.time() - tt),4))
+      
+
+# create the rule definitions table 
 def create_ruledef(cnx, filename):
 	print filename
 	cnx.execute("DROP TABLE IF EXISTS ruledefs")

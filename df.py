@@ -40,8 +40,15 @@ def main(cnx,fname,style,dtcp):
     cnx.create_aggregate("igr",11,infoaggregate)
     cnx.create_aggregate("xgr",11,debugaggregate)
     # not quite foolproof-- still pulls in PROCID's, but in the final version we'll be filtering on this
+    # for ICD9 codes embedded in paths
     icd9grep = '.*\\\\([VE0-9]{3}(\\.[0-9]{0,2}){0,1})\\\\.*'
+    # for ICD9 codes embedded in i2b2 CONCEPT_CD style codes
+    #icd9grep_c = '.*([VE0-9]{3}(\\.[0-9]{0,2}){0,1})'
+    icd9grep_c = '^ICD9:([VE0-9]{3}(\\.[0-9]{0,2}){0,1})$'
+    # for LOINC codes embedded in paths
     loincgrep = '\\\\([0-9]{4,5}-[0-9])\\\\COMPONENT'
+    # for LOINC codes embedded in i2b2 CONCEPT_CD style codes
+    loincgrep_c = '^LOINC:([0-9]{4,5}-[0-9])$'
 
     # DONE (ticket #1): instead of relying on sqlite_denorm.sql, create the scaffold table from inside this 
     # script by putting the appropriate SQL commands into character strings and then passing those
@@ -94,12 +101,18 @@ def main(cnx,fname,style,dtcp):
     cnx.execute(par['cdid_tab'])
     tprint("created cdid table",tt);tt = time.time()
 
+    # TODO: more generic compression of terminal code-nodes (RXNorm, CPT, etc.)
     # diagnoses
-    cnx.execute("""update cdid set cpath = grs('"""+icd9grep+"""',cpath) where ddomain like '%|DX_ID' """)
-    cnx.execute("""update cdid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'ICD9'""")
+    cnx.execute("update cdid set cpath = grs('"+icd9grep+"',cpath) where ddomain like '%|DX_ID'")
+    # TODO: the below might be more performant in current SQLite versions, might want to put it
+    # back in after adding a version check
+    # cnx.execute("""update cdid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'ICD9'""")
+    cnx.execute("update cdid set cpath = grs('"+icd9grep_c+"',ccd) where ddomain = 'ICD9'")
     # LOINC
-    cnx.execute("""update cdid set cpath = grs('"""+loincgrep+"""',cpath) where ddomain like '%|COMPONENT_ID' """)
-    cnx.execute("""update cdid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'LOINC'""")
+    cnx.execute("update cdid set cpath = grs('"+loincgrep+"',cpath) where ddomain like '%|COMPONENT_ID'")
+    # LOINC nodes modified analogously to ICD9 nodes above
+    #cnx.execute("""update cdid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'LOINC'""")
+    cnx.execute("update cdid set cpath = grs('"+loincgrep_c+"',ccd) where ddomain = 'LOINC'")
     cnx.execute("create UNIQUE INDEX if not exists df_ix_cdid ON cdid (id,cpath,ccd)")
     cnx.commit()
     tprint("mapped concept codes in cdid",tt);tt = time.time()
