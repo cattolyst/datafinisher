@@ -29,9 +29,6 @@ from df_fn import *
 
 def main(cnx,fname,style,dtcp):
     tt = time.time(); startt = tt
-    # create a cursor, though most of the time turns out we don't need it because the connection
-    # also has an execute() method.
-    #cur = cnx.cursor()
     # declare some custom functions to use within SQL queries (awesome!)
     cnx.create_function("grs",2,ifgrp)
     cnx.create_function("shw",2,shortenwords)
@@ -39,7 +36,7 @@ def main(cnx,fname,style,dtcp):
     cnx.create_aggregate("dgr",2,diaggregate)
     cnx.create_aggregate("igr",11,infoaggregate)
     cnx.create_aggregate("xgr",11,debugaggregate)
-    # not quite foolproof-- still pulls in PROCID's, but in the final version we'll be filtering on this
+    # not quite foolproof-- still pulls in PROCID's, so we filter for DX_ID
     # for ICD9 codes embedded in paths
     icd9grep = '.*\\\\([VE0-9]{3}(\\.[0-9]{0,2}){0,1})\\\\.*'
     # for ICD9 codes embedded in i2b2 CONCEPT_CD style codes
@@ -89,19 +86,22 @@ def main(cnx,fname,style,dtcp):
 
     tprint("initialized variables",tt);tt = time.time()
 
-    # cur.execute("drop table if exists scaffold")
-    # turns out it was not necessary to create an empty table first for scaffold-- the date problem 
-    # that this was supposed to solve was being caused by something else, so here is the more concise
-    # version that may also be a little faster
+    # scaffold has all unique patient_num and start_date combos, and therefore it defines
+    # which rows will exist in the output CSV file. All other columns that get created
+    # will be joined to it
     cnx.execute(par['create_scaffold'].format(rdst(dtcp)))
     cnx.execute("CREATE UNIQUE INDEX if not exists df_ix_scaffold ON scaffold (patient_num,start_date) ")
     tprint("created scaffold table and index",tt);tt = time.time()
 
-    # cnx.execute("drop table if exists cdid")
+    # the CDID table maps concept codes (CCD) to variable id (ID) to 
+    # data domain (DDOMAIN) to concept path (CPATH)
     cnx.execute(par['cdid_tab'])
     tprint("created cdid table",tt);tt = time.time()
-
+    
+    # Now we will replace the EHR-specific concept paths simply with the most 
+    # granular available standard concept code (so far only for ICD9 and LOINC)
     # TODO: more generic compression of terminal code-nodes (RXNorm, CPT, etc.)
+
     # diagnoses
     cnx.execute("update cdid set cpath = grs('"+icd9grep+"',cpath) where ddomain like '%|DX_ID'")
     # TODO: the below might be more performant in current SQLite versions, might want to put it
@@ -123,34 +123,23 @@ def main(cnx,fname,style,dtcp):
     cnx.commit()
     tprint("created obs_df table and index",tt);tt = time.time()
     
-    # create the ruledefs table
+    # create the ruledefs (rule definitions) table
     # the current implementation is just a temporary hack so that the rest of the script will run
-    # TODO: As per Ticket #19, this needs to be changed so the rules get read in from sql/ruledefs.csv
+    # TODO: As per Ticket #19, this needs to be changed so the rules get read 
+    # in from sql/ruledefs.csv
     create_ruledef(cnx, par['ruledefs'])
         
     tprint("created rule definitions",tt);tt = time.time()
-    #cur.execute("drop table if exists data_dictionary")
+
     with open(ddsql,'r') as ddf:
 	ddcreate = ddf.read()
     cnx.execute(ddcreate)
-    # rather than running the same complicated select statement multiple times for each rule in data_dictionary
-    # lets just run each selection criterion once and save it as a tag in the new RULE column
     tprint("created data_dictionary",tt);tt = time.time()
 
+    # rather than running the same complicated select statement multiple times 
+    # for each rule in data_dictionary lets just run each selection criterion 
+    # once and save it as a tag in the new RULE column
     [cnx.execute(ii[0]) for ii in cnx.execute(par['dd_criteria']).fetchall()]
-    # diagnosis
-    #cnx.execute(par['dd_diag'])
-    # LOINC
-    #cnx.execute(par['dd_loinc'])
-    # code-only
-    #cnx.execute(par['dd_vvital'])
-    # visit vitals
-    #cnx.execute(par['dd_code_only'])
-    # code-and-mod only
-    #cnx.execute(par['dd_codemod_only'])
-    # of the concepts in this column, only one is recorded at a time
-    #cnx.execute(par['dd_vvitals'])
-    # of the concepts in this column, only one is recorded at a time
     cnx.commit()
     tprint("added rules to data_dictionary",tt);tt = time.time()
     

@@ -169,6 +169,7 @@ def tprint(str,tt):
       
 
 # create the rule definitions table 
+# TODO: document the purpose of each column in this table
 def create_ruledef(cnx, filename):
 	print filename
 	cnx.execute("DROP TABLE IF EXISTS ruledefs")
@@ -180,5 +181,4 @@ def create_ruledef(cnx, filename):
 	      to_db.append(row)
 	cnx.executemany("INSERT INTO ruledefs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?);", to_db[1:])
 	cnx.commit()
-
 	
