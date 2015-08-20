@@ -26,9 +26,10 @@ class diaggregate:
     #oo = ",".join(oo)
     return ",".join(self.ooc+['"'+ii+'":["'+'","'.join(self.oocm[ii])+'"]' for ii in self.oocm])
   
-# generically jam together the ancillary fields to see if there is anything noteworthy anywhere in there
-# note that normally you would use NULL or '' for some of these params (to bypass them), doing the aggregation 
-# only on the ones you don't expect to see
+# generically jam together the ancillary fields to see if there is anything 
+# noteworthy anywhere in there note that normally you would use NULL or '' for 
+# some of these params (to bypass them), doing the aggregation only on the ones 
+# you don't expect to see
 class infoaggregate:
   def __init__(self):
     self.cons = {}
@@ -61,8 +62,10 @@ class infoaggregate:
 	del self.cons['ix']
     return (str(self.cons)[1:-1]).replace("', '","','").replace(": ",":")
 
-# this is the kitchen-sink aggregator-- doesn't really condense the data, rather the purpose is to preserve everything there is to be
-# known about each OBSERVATION_FACT entry while still complying with the one-row-per-patient-date requirement
+# this is the kitchen-sink aggregator-- doesn't really condense the data, 
+# rather the purpose is to preserve everything there is to be known about 
+# each OBSERVATION_FACT entry while still complying with the 
+# one-row-per-patient-date requirement
 class debugaggregate:
   def __init__(self):
     self.entries = []
@@ -71,9 +74,10 @@ class debugaggregate:
   def finalize(self):
     return "{"+"},{".join(self.entries)+"}"
 
-# this is to register a SQLite function for pulling out matching substrings (if found)
-# and otherwise returning the original string. Useful for extracting ICD9, CPT, and LOINC codes
-# from concept paths where they are embedded. For ICD9 the magic pattern is:
+# this is to register a SQLite function for pulling out matching substrings 
+# (if found) and otherwise returning the original string. Useful for extracting 
+# ICD9, CPT, and LOINC codes from concept paths where they are embedded. For 
+# ICD9 the magic pattern is:
 # '.*\\\\([VE0-9]{3}\.{0,1}[0-9]{0,2})\\\\.*'
 def ifgrp(pattern,txt):
     rs = re.search(re.compile(pattern),txt)
