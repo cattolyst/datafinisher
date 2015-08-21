@@ -204,7 +204,6 @@ def main(cnx,fname,style,dtcp):
     tprint("wrote output table to file",tt);tt = time.time()
     tprint("TOTAL RUNTIME",startt)
 
-        
     """
     TODO: implement a user-configurable 'rulebook' containing patterns for catching data that would otherwise fall 
     into UNKNOWN FALLBACK, and expressing in a parseable form what to do when each rule is triggered.
