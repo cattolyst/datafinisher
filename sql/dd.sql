@@ -17,7 +17,7 @@ select count(distinct tval_char) tval_char,id from obs_df
 where tval_char is not null and tval_char not in ('E','TNP')
 group by id) tvid on cid = tvid.id
 left join (
-select distinct 1 nval_num,id from obs_df
+select 1 nval_num,id from obs_df
 where nval_num is not null
 order by id) nvid on cid = nvid.id
 left join (
