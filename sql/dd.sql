@@ -1,5 +1,5 @@
 create table if not exists data_dictionary as 
-select cdid.*,mxinsts,mxfacts,'v'||substr('000'||cid,-3) colcd
+select distinct cdid.*,mxinsts,mxfacts,'v'||substr('000'||cid,-3) colcd
 -- the below are semi-human-readable, unique, and relatively short column names
 ,'v'||substr('000'||cid,-3)||'_'||replace(trim(drl(shw(name,15))),' ','_') colid
 ,concept_path,name,mod,tval_char,nval_num,valueflag_cd,units_cd,confidence_num
