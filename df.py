@@ -22,7 +22,7 @@ parser.add_argument("-d","--datecompress",help="Round all dates to the nearest X
 args = parser.parse_args()
 
 # location of data dictionary sql file
-ddsql = cwd + "sql/dd.sql"
+ddsql = cwd + "/sql/dd.sql"
 # TODO: make these passable via command-line argument for customizability
 binvals = ['No','Yes']
 # this says how many joins to permit per sub-table
