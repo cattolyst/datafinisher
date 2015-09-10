@@ -2,6 +2,9 @@ import sqlite3 as sq,argparse,re,csv,time,ConfigParser,pdb
 from os.path import dirname
 cwd = dirname(__file__)
 if cwd == '': cwd = '.'
+# okay, below looks screwed up because it seems like a circular reference
+# but it does the job of communicating to the functions in this module whether or
+# not the user wants verbose logging
 from df import dolog
 
 ###############################################################################
@@ -154,8 +157,8 @@ def dropletters(intext):
 # Functions used in df.py directly                                            #
 ###############################################################################
 
-def logged_execute(cnx, statement, comment='', log=dolog):
-    if log:
+def logged_execute(cnx, statement, comment=''):
+    if dolog:
         if comment != '':
             print 'execute({0}): {1}'.format(comment, statement)
         else:
