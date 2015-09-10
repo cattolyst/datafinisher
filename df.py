@@ -118,11 +118,11 @@ def main(cnx,fname,style,dtcp):
     cnx.commit()
     tprint("mapped concept codes in df_codeid",tt);tt = time.time()
     
-    # The obs_df table may make most of the views unneccessary
-    cnx.execute(par['obs_df'].format(rdst(dtcp)))
-    cnx.execute("create INDEX if not exists df_ix_obs ON obs_df(pn,sd,concept_cd,instance_num,modifier_cd)")
+    # The df_obsfact table may make most of the views unneccessary
+    cnx.execute(par['df_obsfact'].format(rdst(dtcp)))
+    cnx.execute("create INDEX if not exists df_ix_obs ON df_obsfact(pn,sd,concept_cd,instance_num,modifier_cd)")
     cnx.commit()
-    tprint("created obs_df table and index",tt);tt = time.time()
+    tprint("created df_obsfact table and index",tt);tt = time.time()
     
     # create the df_rules (rule definitions) table
     # the current implementation is just a temporary hack so that the rest of the script will run
