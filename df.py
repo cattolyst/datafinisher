@@ -143,20 +143,20 @@ def main(cnx,fname,style,dtcp):
     cnx.commit()
     tprint("added rules to df_dtdict",tt);tt = time.time()
     
-    # create the dd2 table, which may make most of these individually defined tables unnecessary
-    cnx.execute(par['dd2'])
-    tprint("created dd2 table",tt);tt = time.time()
+    # create the df_dynsql table, which may make most of these individually defined tables unnecessary
+    cnx.execute(par['df_dynsql'])
+    tprint("created df_dynsql table",tt);tt = time.time()
     
-    # each row in dd2 will correspond to one column in the output
-    # here we break dd2 into more manageable chunks
-    numjoins = cnx.execute("select count(distinct jcode) from dd2").fetchone()[0]
-    [cnx.execute(par['chunkdd2'].format(ii,joffset)) for ii in range(0,numjoins,joffset)]
+    # each row in df_dynsql will correspond to one column in the output
+    # here we break df_dynsql into more manageable chunks
+    numjoins = cnx.execute("select count(distinct jcode) from df_dynsql").fetchone()[0]
+    [cnx.execute(par['chunkdf_dynsql'].format(ii,joffset)) for ii in range(0,numjoins,joffset)]
     cnx.commit();
-    tprint("assigned chunks to dd2",tt);tt = time.time()
+    tprint("assigned chunks to df_dynsql",tt);tt = time.time()
     
     # code for creating all the temporary tables
     [cnx.execute(ii[0]) for ii in cnx.execute(par['maketables']).fetchall()]
-    tprint("created all tables described by dd2",tt);tt = time.time()
+    tprint("created all tables described by df_dynsql",tt);tt = time.time()
     
     # code for creating what will eventually replace the fulloutput table
     cnx.execute(cnx.execute(par['fulloutput2']).fetchone()[0])
@@ -166,9 +166,9 @@ def main(cnx,fname,style,dtcp):
     # or refactoring to make simpler
     allsel = rdt('birth_date',dtcp)+""" birth_date, sex_cd 
       ,language_cd, race_cd, julianday(scaffold.start_date) - julianday("""+rdt('birth_date',dtcp)+") age_at_visit_days,"""
-    dd2sel = cnx.execute("select group_concat(colname) from dd2").fetchone()[0]
+    df_dynsqlsel = cnx.execute("select group_concat(colname) from df_dynsql").fetchone()[0]
     
-    allqry = "create table if not exists fulloutput as select scaffold.*," + allsel + dd2sel
+    allqry = "create table if not exists fulloutput as select scaffold.*," + allsel + df_dynsqlsel
     allqry += """ from scaffold 
       left join patient_dimension pd on pd.patient_num = scaffold.patient_num
       left join fulloutput2 fo on fo.patient_num = scaffold.patient_num and fo.start_date = scaffold.start_date
@@ -177,10 +177,10 @@ def main(cnx,fname,style,dtcp):
     cnx.execute(allqry)
     tprint("created fulloutput table",tt);tt = time.time()
 
-    dd2selbin = cnx.execute(par['dd2selbin']).fetchone()[0]
+    df_dynsqlselbin = cnx.execute(par['df_dynsqlselbin']).fetchone()[0]
     binoutqry = """create view binoutput as select patient_num,start_date,birth_date,sex_cd
 		   ,language_cd,race_cd,age_at_visit_days,"""
-    binoutqry += dd2selbin
+    binoutqry += df_dynsqlselbin
     #binoutqry += ","+",".join([ii[1] for ii in cnx.execute("pragma table_info(loincfacts)").fetchall()[2:]])
     binoutqry += " from fulloutput"
     cnx.execute("drop view if exists binoutput")
