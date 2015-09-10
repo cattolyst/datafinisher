@@ -7,6 +7,7 @@ usage: df.py [-h] [-l] [-c] [-v CSVFILE] [-s {concat,simple}] [-d DATECOMPRESS] 
 import sqlite3 as sq,argparse,re,csv,time,ConfigParser,pdb
 from os.path import dirname
 cwd = dirname(__file__)
+if cwd == '': cwd = '.'
 cfg = ConfigParser.RawConfigParser()
 cfg.read(cwd+'/sql/df.cfg')
 par=dict(cfg.items("Settings"))
