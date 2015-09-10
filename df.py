@@ -27,6 +27,8 @@ ddsql = cwd + "sql/dd.sql"
 binvals = ['No','Yes']
 # this says how many joins to permit per sub-table
 joffset = 60
+dolog = args.log
+
 from df_fn import *
 
 

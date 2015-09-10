@@ -151,8 +151,8 @@ def dropletters(intext):
 # Functions used in df.py directly                                            #
 ###############################################################################
 
-def logged_execute(cnx, statement, comment=''):
-    if args.log:
+def logged_execute(cnx, statement, comment='', log=dolog):
+    if log:
         if comment != '':
             print 'execute({0}): {1}'.format(comment, statement)
         else:
