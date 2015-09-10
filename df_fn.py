@@ -1,5 +1,4 @@
 import sqlite3 as sq,argparse,re,csv,time,ConfigParser,pdb
-args = parser.parse_args()
 
 ###############################################################################
 # Functions and methods to use within SQLite                                  #
