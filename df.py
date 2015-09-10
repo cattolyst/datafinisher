@@ -60,11 +60,11 @@ def main(cnx,fname,style,dtcp):
       'FirstEntryVal                                     ' val""")
     
     # certain values should not be changed after the first run
-    cnx.execute("CREATE TABLE if not exists dfvars ( varname TEXT, textval TEXT, numval NUM )")
+    cnx.execute("CREATE TABLE if not exists df_vars ( varname TEXT, textval TEXT, numval NUM )")
     # TODO: oldtcp is a candidate for renaming
-    olddtcp = cnx.execute("select numval from dfvars where varname = 'dtcp'").fetchall()
+    olddtcp = cnx.execute("select numval from df_vars where varname = 'dtcp'").fetchall()
     if len(olddtcp) == 0:
-      cnx.execute("insert into dfvars (varname,numval) values ('dtcp',"+str(dtcp)+")")
+      cnx.execute("insert into df_vars (varname,numval) values ('dtcp',"+str(dtcp)+")")
       cnx.commit()
       print "First run since cleanup, apparently"
     elif len(olddtcp) == 1:
@@ -73,7 +73,7 @@ def main(cnx,fname,style,dtcp):
 	print "Warning! Ignoring requested datecompress value and using previously stored value of "+str(dtcp)
 	print "To get rid of it, do `python df.py -c dbfile`"
     else:
-      print "Uh oh. Something is wrong there should not be more than one 'dtcp' entry in dfvars, debug time"
+      print "Uh oh. Something is wrong there should not be more than one 'dtcp' entry in df_vars, debug time"
         
     if cnx.execute("select count(*) from modifier_dimension").fetchone()[0] == 0:
       print "modifier_dimension is empty, let's fill it"
@@ -124,7 +124,7 @@ def main(cnx,fname,style,dtcp):
     cnx.commit()
     tprint("created obs_df table and index",tt);tt = time.time()
     
-    # create the ruledefs (rule definitions) table
+    # create the df_rules (rule definitions) table
     # the current implementation is just a temporary hack so that the rest of the script will run
     # TODO: As per Ticket #19, this needs to be changed so the rules get read 
     # in from sql/ruledefs.csv
