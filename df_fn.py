@@ -150,7 +150,7 @@ def dropletters(intext):
 ###############################################################################
 
 def cleanup(cnx):
-    t_drop = ['cdid','codefacts','codemodfacts','diagfacts','loincfacts',\
+    t_drop = ['df_codeid','codefacts','codemodfacts','diagfacts','loincfacts',\
 	      'fulloutput','fulloutput2','oneperdayfacts','scaffold','unkfacts',\
 	      'unktemp','dfvars','dd2','obs_df','ruledefs','data_dictionary']
     v_drop = ['obs_all','obs_diag_active','obs_diag_inactive','obs_labs','obs_noins','binoutput']
