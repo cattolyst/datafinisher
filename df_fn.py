@@ -153,7 +153,7 @@ def dropletters(intext):
 def cleanup(cnx):
     t_drop = ['df_codeid','codefacts','codemodfacts','diagfacts','loincfacts',\
 	      'fulloutput','fulloutput2','oneperdayfacts','scaffold','unkfacts',\
-	      'unktemp','df_vars','dd2','obs_df','df_rules','data_dictionary']
+	      'unktemp','df_vars','dd2','obs_df','df_rules','df_dtdict']
     v_drop = ['obs_all','obs_diag_active','obs_diag_inactive','obs_labs','obs_noins','binoutput']
     print "Dropping views"
     [cnx.execute("drop view if exists "+ii) for ii in v_drop]

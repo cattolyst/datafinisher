@@ -1,4 +1,4 @@
-create table if not exists data_dictionary as 
+create table if not exists df_dtdict as 
 select distinct df_codeid.*,mxinsts,mxfacts,'v'||substr('000'||cid,-3) colcd
 -- the below are semi-human-readable, unique, and relatively short column names
 ,'v'||substr('000'||cid,-3)||'_'||replace(trim(drl(shw(name,15))),' ','_') colid

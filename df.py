@@ -134,14 +134,14 @@ def main(cnx,fname,style,dtcp):
     with open(ddsql,'r') as ddf:
 	ddcreate = ddf.read()
     cnx.execute(ddcreate)
-    tprint("created data_dictionary",tt);tt = time.time()
+    tprint("created df_dtdict",tt);tt = time.time()
 
     # rather than running the same complicated select statement multiple times 
-    # for each rule in data_dictionary lets just run each selection criterion 
+    # for each rule in df_dtdict lets just run each selection criterion 
     # once and save it as a tag in the new RULE column
     [cnx.execute(ii[0]) for ii in cnx.execute(par['dd_criteria']).fetchall()]
     cnx.commit()
-    tprint("added rules to data_dictionary",tt);tt = time.time()
+    tprint("added rules to df_dtdict",tt);tt = time.time()
     
     # create the dd2 table, which may make most of these individually defined tables unnecessary
     cnx.execute(par['dd2'])
