@@ -153,15 +153,15 @@ def dropletters(intext):
 def cleanup(cnx):
     t_drop = ['df_codeid','codefacts','codemodfacts','diagfacts','loincfacts',\
 	      'fulloutput','fulloutput2','oneperdayfacts','df_joinme','unkfacts',\
-	      'unktemp','df_vars','df_dynsql','df_obsfact','df_rules','df_dtdict']
+	      'unktemp','df_vars','create_dynsql','create_obsfact','df_rules','df_dtdict']
     v_drop = ['obs_all','obs_diag_active','obs_diag_inactive','obs_labs','obs_noins','binoutput']
     print "Dropping views"
     [cnx.execute("drop view if exists "+ii) for ii in v_drop]
-    if len(cnx.execute("pragma table_info(df_dynsql)").fetchall()) >0:
+    if len(cnx.execute("pragma table_info(create_dynsql)").fetchall()) >0:
       print "Dropping temporary tables"
-      # note that because we're relying on df_dynsql in order to find the temporary tables, 
-      # those have to be dropped before the persistent tables including df_dynsql get dropped
-      [cnx.execute(ii[0]) for ii in cnx.execute("select distinct 'drop table if exists '||ttable from df_dynsql").fetchall()]
+      # note that because we're relying on create_dynsql in order to find the temporary tables, 
+      # those have to be dropped before the persistent tables including create_dynsql get dropped
+      [cnx.execute(ii[0]) for ii in cnx.execute("select distinct 'drop table if exists '||ttable from create_dynsql").fetchall()]
     print "Dropping tables"
     [cnx.execute("drop table if exists "+ii) for ii in t_drop]
 

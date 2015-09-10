@@ -90,13 +90,13 @@ def main(cnx,fname,style,dtcp):
     # df_joinme has all unique patient_num and start_date combos, and therefore it defines
     # which rows will exist in the output CSV file. All other columns that get created
     # will be joined to it
-    cnx.execute(par['create_df_joinme'].format(rdst(dtcp)))
+    cnx.execute(par['create_joinme'].format(rdst(dtcp)))
     cnx.execute("CREATE UNIQUE INDEX if not exists df_ix_df_joinme ON df_joinme (patient_num,start_date) ")
     tprint("created df_joinme table and index",tt);tt = time.time()
 
     # the CDID table maps concept codes (CCD) to variable id (ID) to 
     # data domain (DDOMAIN) to concept path (CPATH)
-    cnx.execute(par['df_codeid_tab'])
+    cnx.execute(par['create_codeid'])
     tprint("created df_codeid table",tt);tt = time.time()
     
     # Now we will replace the EHR-specific concept paths simply with the most 
@@ -118,11 +118,11 @@ def main(cnx,fname,style,dtcp):
     cnx.commit()
     tprint("mapped concept codes in df_codeid",tt);tt = time.time()
     
-    # The df_obsfact table may make most of the views unneccessary
-    cnx.execute(par['df_obsfact'].format(rdst(dtcp)))
-    cnx.execute("create INDEX if not exists df_ix_obs ON df_obsfact(pn,sd,concept_cd,instance_num,modifier_cd)")
+    # The create_obsfact table may make most of the views unneccessary
+    cnx.execute(par['create_obsfact'].format(rdst(dtcp)))
+    cnx.execute("create INDEX if not exists df_ix_obs ON create_obsfact(pn,sd,concept_cd,instance_num,modifier_cd)")
     cnx.commit()
-    tprint("created df_obsfact table and index",tt);tt = time.time()
+    tprint("created create_obsfact table and index",tt);tt = time.time()
     
     # create the df_rules (rule definitions) table
     # the current implementation is just a temporary hack so that the rest of the script will run
@@ -143,20 +143,20 @@ def main(cnx,fname,style,dtcp):
     cnx.commit()
     tprint("added rules to df_dtdict",tt);tt = time.time()
     
-    # create the df_dynsql table, which may make most of these individually defined tables unnecessary
-    cnx.execute(par['df_dynsql'])
-    tprint("created df_dynsql table",tt);tt = time.time()
+    # create the create_dynsql table, which may make most of these individually defined tables unnecessary
+    cnx.execute(par['create_dynsql'])
+    tprint("created create_dynsql table",tt);tt = time.time()
     
-    # each row in df_dynsql will correspond to one column in the output
-    # here we break df_dynsql into more manageable chunks
-    numjoins = cnx.execute("select count(distinct jcode) from df_dynsql").fetchone()[0]
-    [cnx.execute(par['chunkdf_dynsql'].format(ii,joffset)) for ii in range(0,numjoins,joffset)]
+    # each row in create_dynsql will correspond to one column in the output
+    # here we break create_dynsql into more manageable chunks
+    numjoins = cnx.execute("select count(distinct jcode) from create_dynsql").fetchone()[0]
+    [cnx.execute(par['chunk_dynsql'].format(ii,joffset)) for ii in range(0,numjoins,joffset)]
     cnx.commit();
-    tprint("assigned chunks to df_dynsql",tt);tt = time.time()
+    tprint("assigned chunks to create_dynsql",tt);tt = time.time()
     
     # code for creating all the temporary tables
     [cnx.execute(ii[0]) for ii in cnx.execute(par['maketables']).fetchall()]
-    tprint("created all tables described by df_dynsql",tt);tt = time.time()
+    tprint("created all tables described by create_dynsql",tt);tt = time.time()
     
     # code for creating what will eventually replace the fulloutput table
     cnx.execute(cnx.execute(par['fulloutput2']).fetchone()[0])
@@ -166,9 +166,9 @@ def main(cnx,fname,style,dtcp):
     # or refactoring to make simpler
     allsel = rdt('birth_date',dtcp)+""" birth_date, sex_cd 
       ,language_cd, race_cd, julianday(df_joinme.start_date) - julianday("""+rdt('birth_date',dtcp)+") age_at_visit_days,"""
-    df_dynsqlsel = cnx.execute("select group_concat(colname) from df_dynsql").fetchone()[0]
+    create_dynsqlsel = cnx.execute("select group_concat(colname) from create_dynsql").fetchone()[0]
     
-    allqry = "create table if not exists fulloutput as select df_joinme.*," + allsel + df_dynsqlsel
+    allqry = "create table if not exists fulloutput as select df_joinme.*," + allsel + create_dynsqlsel
     allqry += """ from df_joinme 
       left join patient_dimension pd on pd.patient_num = df_joinme.patient_num
       left join fulloutput2 fo on fo.patient_num = df_joinme.patient_num and fo.start_date = df_joinme.start_date
@@ -177,10 +177,10 @@ def main(cnx,fname,style,dtcp):
     cnx.execute(allqry)
     tprint("created fulloutput table",tt);tt = time.time()
 
-    df_dynsqlselbin = cnx.execute(par['df_dynsqlselbin']).fetchone()[0]
+    selbin_dynsql = cnx.execute(par['selbin_dynsql']).fetchone()[0]
     binoutqry = """create view binoutput as select patient_num,start_date,birth_date,sex_cd
 		   ,language_cd,race_cd,age_at_visit_days,"""
-    binoutqry += df_dynsqlselbin
+    binoutqry += selbin_dynsql
     #binoutqry += ","+",".join([ii[1] for ii in cnx.execute("pragma table_info(loincfacts)").fetchall()[2:]])
     binoutqry += " from fulloutput"
     cnx.execute("drop view if exists binoutput")
