@@ -150,20 +150,30 @@ def dropletters(intext):
 # Functions used in df.py directly                                            #
 ###############################################################################
 
+def logged_execute(cnx, statement, comment=''):
+    if args.log:
+        if comment != '':
+            print 'execute({0}): {1}'.format(comment, statement)
+        else:
+            print 'execute: {0}'.format(statement)
+    return cnx.execute(statement)
+
 def cleanup(cnx):
     t_drop = ['df_codeid','codefacts','codemodfacts','diagfacts','loincfacts',\
 	      'fulloutput','fulloutput2','oneperdayfacts','df_joinme','unkfacts',\
 	      'unktemp','df_vars','create_dynsql','create_obsfact','df_rules','df_dtdict']
     v_drop = ['obs_all','obs_diag_active','obs_diag_inactive','obs_labs','obs_noins','binoutput']
     print "Dropping views"
-    [cnx.execute("drop view if exists "+ii) for ii in v_drop]
-    if len(cnx.execute("pragma table_info(create_dynsql)").fetchall()) >0:
+    [logged_execute(cnx,"drop view if exists "+ii) for ii in v_drop]
+    if len(logged_execute(cnx,"pragma table_info(create_dynsql)").fetchall()) >0:
       print "Dropping temporary tables"
       # note that because we're relying on create_dynsql in order to find the temporary tables, 
       # those have to be dropped before the persistent tables including create_dynsql get dropped
-      [cnx.execute(ii[0]) for ii in cnx.execute("select distinct 'drop table if exists '||ttable from create_dynsql").fetchall()]
+      [logged_execute(cnx,ii[0]) for ii in logged_execute(cnx,"select distinct 'drop table if exists '||ttable from create_dynsql").fetchall()]
     print "Dropping tables"
-    [cnx.execute("drop table if exists "+ii) for ii in t_drop]
+    [logged_execute(cnx,"drop table if exists "+ii) for ii in t_drop]
+    
+
 
 def tprint(str,tt):
     print(str+":"+" "*(60-len(str))+"%9.4f" % round((time.time() - tt),4))
@@ -173,8 +183,8 @@ def tprint(str,tt):
 # TODO: document the purpose of each column in this table
 def create_ruledef(cnx, filename):
 	print filename
-	cnx.execute("DROP TABLE IF EXISTS df_rules")
-	cnx.execute("CREATE TABLE df_rules (sub_slct_std UNKNOWN_TYPE_STRING, sub_payload UNKNOWN_TYPE_STRING, sub_frm_std UNKNOWN_TYPE_STRING, sbwr UNKNOWN_TYPE_STRING, sub_grp_std UNKNOWN_TYPE_STRING, presuffix UNKNOWN_TYPE_STRING, suffix UNKNOWN_TYPE_STRING, concode UNKNOWN_TYPE_BOOLEAN NOT NULL, rule UNKNOWN_TYPE_STRING NOT NULL, grouping INTEGER NOT NULL, subgrouping INTEGER NOT NULL, in_use UNKNOWN_TYPE_BOOLEAN NOT NULL, criterion UNKNOWN_TYPE_STRING)")
+	logged_execute(cnx,"DROP TABLE IF EXISTS df_rules")
+	logged_execute(cnx,"CREATE TABLE df_rules (sub_slct_std UNKNOWN_TYPE_STRING, sub_payload UNKNOWN_TYPE_STRING, sub_frm_std UNKNOWN_TYPE_STRING, sbwr UNKNOWN_TYPE_STRING, sub_grp_std UNKNOWN_TYPE_STRING, presuffix UNKNOWN_TYPE_STRING, suffix UNKNOWN_TYPE_STRING, concode UNKNOWN_TYPE_BOOLEAN NOT NULL, rule UNKNOWN_TYPE_STRING NOT NULL, grouping INTEGER NOT NULL, subgrouping INTEGER NOT NULL, in_use UNKNOWN_TYPE_BOOLEAN NOT NULL, criterion UNKNOWN_TYPE_STRING)")
 	to_db = []
 	with open(filename) as csvfile:
 	  readCSV = csv.reader(csvfile, skipinitialspace=True)
