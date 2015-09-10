@@ -166,9 +166,9 @@ def main(cnx,fname,style,dtcp):
     # or refactoring to make simpler
     allsel = rdt('birth_date',dtcp)+""" birth_date, sex_cd 
       ,language_cd, race_cd, julianday(df_joinme.start_date) - julianday("""+rdt('birth_date',dtcp)+") age_at_visit_days,"""
-    create_dynsqlsel = cnx.execute("select group_concat(colname) from create_dynsql").fetchone()[0]
+    dynsqlsel = cnx.execute("select group_concat(colname) from df_dynsql").fetchone()[0]
     
-    allqry = "create table if not exists fulloutput as select df_joinme.*," + allsel + create_dynsqlsel
+    allqry = "create table if not exists fulloutput as select df_joinme.*," + allsel + dynsqlsel
     allqry += """ from df_joinme 
       left join patient_dimension pd on pd.patient_num = df_joinme.patient_num
       left join fulloutput2 fo on fo.patient_num = df_joinme.patient_num and fo.start_date = df_joinme.start_date
