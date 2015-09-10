@@ -2,7 +2,7 @@ import sqlite3 as sq,argparse,re,csv,time,ConfigParser,pdb
 from os.path import dirname
 cwd = dirname(__file__)
 if cwd == '': cwd = '.'
-from cwd+'/df.py' import dolog
+from df.py import dolog
 
 ###############################################################################
 # Functions and methods to use within SQLite                                  #
