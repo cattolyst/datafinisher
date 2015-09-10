@@ -120,9 +120,9 @@ def main(cnx,fname,style,dtcp):
     
     # The create_obsfact table may make most of the views unneccessary
     cnx.execute(par['create_obsfact'].format(rdst(dtcp)))
-    cnx.execute("create INDEX if not exists df_ix_obs ON create_obsfact(pn,sd,concept_cd,instance_num,modifier_cd)")
+    cnx.execute("create INDEX if not exists df_ix_obs ON df_obsfact(pn,sd,concept_cd,instance_num,modifier_cd)")
     cnx.commit()
-    tprint("created create_obsfact table and index",tt);tt = time.time()
+    tprint("created df_obsfact table and index",tt);tt = time.time()
     
     # create the df_rules (rule definitions) table
     # the current implementation is just a temporary hack so that the rest of the script will run
@@ -145,18 +145,18 @@ def main(cnx,fname,style,dtcp):
     
     # create the create_dynsql table, which may make most of these individually defined tables unnecessary
     cnx.execute(par['create_dynsql'])
-    tprint("created create_dynsql table",tt);tt = time.time()
+    tprint("created df_dynsql table",tt);tt = time.time()
     
     # each row in create_dynsql will correspond to one column in the output
     # here we break create_dynsql into more manageable chunks
     numjoins = cnx.execute("select count(distinct jcode) from create_dynsql").fetchone()[0]
     [cnx.execute(par['chunk_dynsql'].format(ii,joffset)) for ii in range(0,numjoins,joffset)]
     cnx.commit();
-    tprint("assigned chunks to create_dynsql",tt);tt = time.time()
+    tprint("assigned chunks to df_dynsql",tt);tt = time.time()
     
     # code for creating all the temporary tables
     [cnx.execute(ii[0]) for ii in cnx.execute(par['maketables']).fetchall()]
-    tprint("created all tables described by create_dynsql",tt);tt = time.time()
+    tprint("created all tables described by df_dynsql",tt);tt = time.time()
     
     # code for creating what will eventually replace the fulloutput table
     cnx.execute(cnx.execute(par['fulloutput2']).fetchone()[0])
