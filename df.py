@@ -149,7 +149,7 @@ def main(cnx,fname,style,dtcp):
     
     # each row in create_dynsql will correspond to one column in the output
     # here we break create_dynsql into more manageable chunks
-    numjoins = cnx.execute("select count(distinct jcode) from create_dynsql").fetchone()[0]
+    numjoins = cnx.execute("select count(distinct jcode) from df_dynsql").fetchone()[0]
     [cnx.execute(par['chunk_dynsql'].format(ii,joffset)) for ii in range(0,numjoins,joffset)]
     cnx.commit();
     tprint("assigned chunks to df_dynsql",tt);tt = time.time()
