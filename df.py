@@ -47,7 +47,7 @@ def main(cnx,fname,style,dtcp):
     # for LOINC codes embedded in i2b2 CONCEPT_CD style codes
     loincgrep_c = '^LOINC:([0-9]{4,5}-[0-9])$'
 
-    # DONE (ticket #1): instead of relying on sqlite_denorm.sql, create the scaffold table from inside this 
+    # DONE (ticket #1): instead of relying on sqlite_denorm.sql, create the df_joinme table from inside this 
     # script by putting the appropriate SQL commands into character strings and then passing those
     # strings as arguments to execute() (see below for an example of cur.execute() usage (cur just happens 
     # to be what we named the cursor object we created above, and execute() is a method that cursor objects have)
@@ -87,12 +87,12 @@ def main(cnx,fname,style,dtcp):
 
     tprint("initialized variables",tt);tt = time.time()
 
-    # scaffold has all unique patient_num and start_date combos, and therefore it defines
+    # df_joinme has all unique patient_num and start_date combos, and therefore it defines
     # which rows will exist in the output CSV file. All other columns that get created
     # will be joined to it
-    cnx.execute(par['create_scaffold'].format(rdst(dtcp)))
-    cnx.execute("CREATE UNIQUE INDEX if not exists df_ix_scaffold ON scaffold (patient_num,start_date) ")
-    tprint("created scaffold table and index",tt);tt = time.time()
+    cnx.execute(par['create_df_joinme'].format(rdst(dtcp)))
+    cnx.execute("CREATE UNIQUE INDEX if not exists df_ix_df_joinme ON df_joinme (patient_num,start_date) ")
+    tprint("created df_joinme table and index",tt);tt = time.time()
 
     # the CDID table maps concept codes (CCD) to variable id (ID) to 
     # data domain (DDOMAIN) to concept path (CPATH)
@@ -165,13 +165,13 @@ def main(cnx,fname,style,dtcp):
     # TODO: lots of variables being created here, therefore candidates for renaming
     # or refactoring to make simpler
     allsel = rdt('birth_date',dtcp)+""" birth_date, sex_cd 
-      ,language_cd, race_cd, julianday(scaffold.start_date) - julianday("""+rdt('birth_date',dtcp)+") age_at_visit_days,"""
+      ,language_cd, race_cd, julianday(df_joinme.start_date) - julianday("""+rdt('birth_date',dtcp)+") age_at_visit_days,"""
     df_dynsqlsel = cnx.execute("select group_concat(colname) from df_dynsql").fetchone()[0]
     
-    allqry = "create table if not exists fulloutput as select scaffold.*," + allsel + df_dynsqlsel
-    allqry += """ from scaffold 
-      left join patient_dimension pd on pd.patient_num = scaffold.patient_num
-      left join fulloutput2 fo on fo.patient_num = scaffold.patient_num and fo.start_date = scaffold.start_date
+    allqry = "create table if not exists fulloutput as select df_joinme.*," + allsel + df_dynsqlsel
+    allqry += """ from df_joinme 
+      left join patient_dimension pd on pd.patient_num = df_joinme.patient_num
+      left join fulloutput2 fo on fo.patient_num = df_joinme.patient_num and fo.start_date = df_joinme.start_date
       """
     allqry += " order by patient_num, start_date"
     cnx.execute(allqry)
