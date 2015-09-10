@@ -54,7 +54,7 @@ def main(cnx,fname,style,dtcp):
     # DONE: create an id to concept_cd mapping table (and filtering out redundant facts taken care of here)
     # TODO: parameterize the fact-filtering
     # create a log table
-    cnx.execute("""create table if not exists dflog as
+    cnx.execute("""create table if not exists datafinisher_log as
       select datetime() timestamp,
       'FirstEntryKey                                     ' key,
       'FirstEntryVal                                     ' val""")
@@ -82,7 +82,7 @@ def main(cnx,fname,style,dtcp):
       # and copy from it into the input .db file's modifier_dimension
       cnx.execute("insert into modifier_dimension select * from dfdb.modifier_dimension")
       # and log that we did so
-      cnx.execute("insert into dflog select datetime(),'insert','modifier_dimension'")
+      cnx.execute("insert into datafinisher_log select datetime(),'insert','modifier_dimension'")
       cnx.commit()
 
     tprint("initialized variables",tt);tt = time.time()
