@@ -1,4 +1,5 @@
 import sqlite3 as sq,argparse,re,csv,time,ConfigParser,pdb
+args = parser.parse_args()
 
 ###############################################################################
 # Functions and methods to use within SQLite                                  #
@@ -151,7 +152,7 @@ def dropletters(intext):
 ###############################################################################
 
 def logged_execute(cnx, statement, comment=''):
-    if dolog:
+    if args.log:
         if comment != '':
             print 'execute({0}): {1}'.format(comment, statement)
         else:
