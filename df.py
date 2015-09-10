@@ -58,17 +58,17 @@ def main(cnx,fname,style,dtcp):
     # DONE: create an id to concept_cd mapping table (and filtering out redundant facts taken care of here)
     # TODO: parameterize the fact-filtering
     # create a log table
-    logged_execute("""create table if not exists datafinisher_log as
+    logged_execute(cnx, """create table if not exists datafinisher_log as
       select datetime() timestamp,
       'FirstEntryKey                                     ' key,
       'FirstEntryVal                                     ' val""")
     
     # certain values should not be changed after the first run
-    logged_execute("CREATE TABLE if not exists df_vars ( varname TEXT, textval TEXT, numval NUM )")
+    logged_execute(cnx, "CREATE TABLE if not exists df_vars ( varname TEXT, textval TEXT, numval NUM )")
     # TODO: oldtcp is a candidate for renaming
-    olddtcp = logged_execute("select numval from df_vars where varname = 'dtcp'").fetchall()
+    olddtcp = logged_execute(cnx, "select numval from df_vars where varname = 'dtcp'").fetchall()
     if len(olddtcp) == 0:
-      logged_execute("insert into df_vars (varname,numval) values ('dtcp',"+str(dtcp)+")")
+      logged_execute(cnx, "insert into df_vars (varname,numval) values ('dtcp',"+str(dtcp)+")")
       cnx.commit()
       print "First run since cleanup, apparently"
     elif len(olddtcp) == 1:
@@ -79,14 +79,14 @@ def main(cnx,fname,style,dtcp):
     else:
       print "Uh oh. Something is wrong there should not be more than one 'dtcp' entry in df_vars, debug time"
         
-    if logged_execute("select count(*) from modifier_dimension").fetchone()[0] == 0:
+    if logged_execute(cnx, "select count(*) from modifier_dimension").fetchone()[0] == 0:
       print "modifier_dimension is empty, let's fill it"
       # we load our local fallback db
-      logged_execute("attach './sql/datafinisher.db' as dfdb")
+      logged_execute(cnx, "attach './sql/datafinisher.db' as dfdb")
       # and copy from it into the input .db file's modifier_dimension
-      logged_execute("insert into modifier_dimension select * from dfdb.modifier_dimension")
+      logged_execute(cnx, "insert into modifier_dimension select * from dfdb.modifier_dimension")
       # and log that we did so
-      logged_execute("insert into datafinisher_log select datetime(),'insert','modifier_dimension'")
+      logged_execute(cnx, "insert into datafinisher_log select datetime(),'insert','modifier_dimension'")
       cnx.commit()
 
     tprint("initialized variables",tt);tt = time.time()
@@ -94,13 +94,13 @@ def main(cnx,fname,style,dtcp):
     # df_joinme has all unique patient_num and start_date combos, and therefore it defines
     # which rows will exist in the output CSV file. All other columns that get created
     # will be joined to it
-    logged_execute(par['create_joinme'].format(rdst(dtcp)))
-    logged_execute("CREATE UNIQUE INDEX if not exists df_ix_df_joinme ON df_joinme (patient_num,start_date) ")
+    logged_execute(cnx, par['create_joinme'].format(rdst(dtcp)))
+    logged_execute(cnx, "CREATE UNIQUE INDEX if not exists df_ix_df_joinme ON df_joinme (patient_num,start_date) ")
     tprint("created df_joinme table and index",tt);tt = time.time()
 
     # the CDID table maps concept codes (CCD) to variable id (ID) to 
     # data domain (DDOMAIN) to concept path (CPATH)
-    logged_execute(par['create_codeid_tmp'])
+    logged_execute(cnx, par['create_codeid_tmp'])
     tprint("created df_codeid_tmp table",tt);tt = time.time()
     
     # Now we will replace the EHR-specific concept paths simply with the most 
@@ -108,25 +108,25 @@ def main(cnx,fname,style,dtcp):
     # TODO: more generic compression of terminal code-nodes (RXNorm, CPT, etc.)
 
     # diagnoses
-    logged_execute("update df_codeid_tmp set cpath = grs('"+icd9grep+"',cpath) where ddomain like '%|DX_ID'")
+    logged_execute(cnx, "update df_codeid_tmp set cpath = grs('"+icd9grep+"',cpath) where ddomain like '%|DX_ID'")
     # TODO: the below might be more performant in current SQLite versions, might want to put it
     # back in after adding a version check
-    # logged_execute("""update df_codeid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'ICD9'""")
-    logged_execute("update df_codeid_tmp set cpath = replace(ccd,'ICD9:','') where ddomain = 'ICD9'")
+    # logged_execute(cnx, """update df_codeid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'ICD9'""")
+    logged_execute(cnx, "update df_codeid_tmp set cpath = replace(ccd,'ICD9:','') where ddomain = 'ICD9'")
     # LOINC
-    logged_execute("update df_codeid_tmp set cpath = grs('"+loincgrep+"',cpath) where ddomain like '%|COMPONENT_ID'")
+    logged_execute(cnx, "update df_codeid_tmp set cpath = grs('"+loincgrep+"',cpath) where ddomain like '%|COMPONENT_ID'")
     # LOINC nodes modified analogously to ICD9 nodes above
-    #logged_execute("""update df_codeid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'LOINC'""")
-    logged_execute("update df_codeid_tmp set cpath = replace(ccd,'LOINC:','') where ddomain = 'LOINC'")
-    logged_execute(par['create_codeid'])
-    logged_execute("create UNIQUE INDEX if not exists df_ix_df_codeid ON df_codeid (id,cpath,ccd)")
+    #logged_execute(cnx, """update df_codeid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'LOINC'""")
+    logged_execute(cnx, "update df_codeid_tmp set cpath = replace(ccd,'LOINC:','') where ddomain = 'LOINC'")
+    logged_execute(cnx, par['create_codeid'])
+    logged_execute(cnx, "create UNIQUE INDEX if not exists df_ix_df_codeid ON df_codeid (id,cpath,ccd)")
     cnx.commit()
-    logged_execute("drop table if exists df_codeid_tmp")
+    logged_execute(cnx, "drop table if exists df_codeid_tmp")
     tprint("mapped concept codes in df_codeid",tt);tt = time.time()
     
     # The create_obsfact table may make most of the views unneccessary
-    logged_execute(par['create_obsfact'].format(rdst(dtcp)))
-    logged_execute("create INDEX if not exists df_ix_obs ON df_obsfact(pn,sd,concept_cd,instance_num,modifier_cd)")
+    logged_execute(cnx, par['create_obsfact'].format(rdst(dtcp)))
+    logged_execute(cnx, "create INDEX if not exists df_ix_obs ON df_obsfact(pn,sd,concept_cd,instance_num,modifier_cd)")
     cnx.commit()
     tprint("created df_obsfact table and index",tt);tt = time.time()
     
@@ -139,40 +139,40 @@ def main(cnx,fname,style,dtcp):
 
     with open(ddsql,'r') as ddf:
 	ddcreate = ddf.read()
-    logged_execute(ddcreate)
+    logged_execute(cnx, ddcreate)
     tprint("created df_dtdict",tt);tt = time.time()
 
     # rather than running the same complicated select statement multiple times 
     # for each rule in df_dtdict lets just run each selection criterion 
     # once and save it as a tag in the new RULE column
-    [logged_execute(ii[0]) for ii in logged_execute(par['dd_criteria']).fetchall()]
+    [logged_execute(cnx, ii[0]) for ii in logged_execute(cnx, par['dd_criteria']).fetchall()]
     cnx.commit()
     tprint("added rules to df_dtdict",tt);tt = time.time()
     
     # create the create_dynsql table, which may make most of these individually defined tables unnecessary
-    logged_execute(par['create_dynsql'])
+    logged_execute(cnx, par['create_dynsql'])
     tprint("created df_dynsql table",tt);tt = time.time()
     
     # each row in create_dynsql will correspond to one column in the output
     # here we break create_dynsql into more manageable chunks
-    numjoins = logged_execute("select count(distinct jcode) from df_dynsql").fetchone()[0]
-    [logged_execute(par['chunk_dynsql'].format(ii,joffset)) for ii in range(0,numjoins,joffset)]
+    numjoins = logged_execute(cnx, "select count(distinct jcode) from df_dynsql").fetchone()[0]
+    [logged_execute(cnx, par['chunk_dynsql'].format(ii,joffset)) for ii in range(0,numjoins,joffset)]
     cnx.commit();
     tprint("assigned chunks to df_dynsql",tt);tt = time.time()
     
     # code for creating all the temporary tables
-    [logged_execute(ii[0]) for ii in logged_execute(par['maketables']).fetchall()]
+    [logged_execute(cnx, ii[0]) for ii in logged_execute(cnx, par['maketables']).fetchall()]
     tprint("created all tables described by df_dynsql",tt);tt = time.time()
     
     # code for creating what will eventually replace the fulloutput table
-    logged_execute(logged_execute(par['fulloutput2']).fetchone()[0])
+    logged_execute(cnx, logged_execute(cnx, par['fulloutput2']).fetchone()[0])
     tprint("created fulloutput2 table",tt);tt = time.time()
     
     # TODO: lots of variables being created here, therefore candidates for renaming
     # or refactoring to make simpler
     allsel = rdt('birth_date',dtcp)+""" birth_date, sex_cd 
       ,language_cd, race_cd, julianday(df_joinme.start_date) - julianday("""+rdt('birth_date',dtcp)+") age_at_visit_days,"""
-    dynsqlsel = logged_execute("select group_concat(colname) from df_dynsql").fetchone()[0]
+    dynsqlsel = logged_execute(cnx, "select group_concat(colname) from df_dynsql").fetchone()[0]
     
     allqry = "create table if not exists fulloutput as select df_joinme.*," + allsel + dynsqlsel
     allqry += """ from df_joinme 
@@ -180,17 +180,17 @@ def main(cnx,fname,style,dtcp):
       left join fulloutput2 fo on fo.patient_num = df_joinme.patient_num and fo.start_date = df_joinme.start_date
       """
     allqry += " order by patient_num, start_date"
-    logged_execute(allqry)
+    logged_execute(cnx, allqry)
     tprint("created fulloutput table",tt);tt = time.time()
 
-    selbin_dynsql = logged_execute(par['selbin_dynsql']).fetchone()[0]
+    selbin_dynsql = logged_execute(cnx, par['selbin_dynsql']).fetchone()[0]
     binoutqry = """create view binoutput as select patient_num,start_date,birth_date,sex_cd
 		   ,language_cd,race_cd,age_at_visit_days,"""
     binoutqry += selbin_dynsql
-    #binoutqry += ","+",".join([ii[1] for ii in logged_execute("pragma table_info(loincfacts)").fetchall()[2:]])
+    #binoutqry += ","+",".join([ii[1] for ii in logged_execute(cnx, "pragma table_info(loincfacts)").fetchall()[2:]])
     binoutqry += " from fulloutput"
-    logged_execute("drop view if exists binoutput")
-    logged_execute(binoutqry)
+    logged_execute(cnx, "drop view if exists binoutput")
+    logged_execute(cnx, binoutqry)
     tprint("created binoutput view",tt);tt = time.time()
 
     if style == 'simple':
@@ -203,7 +203,7 @@ def main(cnx,fname,style,dtcp):
       ff = open(fname,'wb')
       # below line generates the CSV header row
       csv.writer(ff).writerow([ii[1] for ii in con.execute("PRAGMA table_info("+finalview+")").fetchall()])
-      result = logged_execute("select * from "+finalview).fetchall()
+      result = logged_execute(cnx, "select * from "+finalview).fetchall()
       with ff:
 	  csv.writer(ff).writerows(result)
 
