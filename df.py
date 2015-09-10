@@ -27,7 +27,7 @@ ddsql = cwd + "sql/dd.sql"
 binvals = ['No','Yes']
 # this says how many joins to permit per sub-table
 joffset = 60
-
+dolog = args.log
 from df_fn import *
 
 
@@ -50,6 +50,7 @@ def main(cnx,fname,style,dtcp):
     loincgrep = '\\\\([0-9]{4,5}-[0-9])\\\\COMPONENT'
     # for LOINC codes embedded in i2b2 CONCEPT_CD style codes
     loincgrep_c = '^LOINC:([0-9]{4,5}-[0-9])$'
+    
 
     # DONE (ticket #1): instead of relying on sqlite_denorm.sql, create the df_joinme table from inside this 
     # script by putting the appropriate SQL commands into character strings and then passing those

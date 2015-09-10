@@ -151,7 +151,7 @@ def dropletters(intext):
 ###############################################################################
 
 def logged_execute(cnx, statement, comment=''):
-    if args.log:
+    if dolog:
         if comment != '':
             print 'execute({0}): {1}'.format(comment, statement)
         else:
