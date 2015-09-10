@@ -108,12 +108,12 @@ def main(cnx,fname,style,dtcp):
     # TODO: the below might be more performant in current SQLite versions, might want to put it
     # back in after adding a version check
     # cnx.execute("""update cdid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'ICD9'""")
-    cnx.execute("update cdid set cpath = grs('"+icd9grep_c+"',ccd) where ddomain = 'ICD9'")
+    cnx.execute("update cdid set cpath = replace(ccd,'ICD9:','') where ddomain = 'ICD9'")
     # LOINC
     cnx.execute("update cdid set cpath = grs('"+loincgrep+"',cpath) where ddomain like '%|COMPONENT_ID'")
     # LOINC nodes modified analogously to ICD9 nodes above
     #cnx.execute("""update cdid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'LOINC'""")
-    cnx.execute("update cdid set cpath = grs('"+loincgrep_c+"',ccd) where ddomain = 'LOINC'")
+    cnx.execute("update cdid set cpath = replace(ccd,'LOINC:','') where ddomain = 'LOINC'")
     cnx.execute("create UNIQUE INDEX if not exists df_ix_cdid ON cdid (id,cpath,ccd)")
     cnx.commit()
     tprint("mapped concept codes in cdid",tt);tt = time.time()
