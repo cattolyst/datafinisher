@@ -205,7 +205,7 @@ def main(cnx,fname,style,dtcp):
     tprint("TOTAL RUNTIME",startt)
 
     """
-    TODO: implement a user-configurable 'rulebook' containing patterns for catching data that would otherwise fall 
+    DONE: implement a user-configurable 'rulebook' containing patterns for catching data that would otherwise fall 
     into UNKNOWN FALLBACK, and expressing in a parseable form what to do when each rule is triggered.
     DONE: The data dictionary will contain information about which built-in or user-configured rule applies for each cid
     We are probably looking at several different 'dcat' style tables, broken up by type of data
