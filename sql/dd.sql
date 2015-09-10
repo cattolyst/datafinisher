@@ -1,11 +1,11 @@
 create table if not exists data_dictionary as 
-select distinct cdid.*,mxinsts,mxfacts,'v'||substr('000'||cid,-3) colcd
+select distinct df_codeid.*,mxinsts,mxfacts,'v'||substr('000'||cid,-3) colcd
 -- the below are semi-human-readable, unique, and relatively short column names
 ,'v'||substr('000'||cid,-3)||'_'||replace(trim(drl(shw(name,15))),' ','_') colid
 ,concept_path,name,mod,tval_char,nval_num,valueflag_cd,units_cd,confidence_num
 ,quantity_num,location_cd,valtype_cd,0 done
 ,'UNKNOWN_DATA_ELEMENT' rule
-from (select cdid.id cid,group_concat(distinct ddomain) ddomain,count(distinct ccd) ccd from cdid group by id) cdid
+from (select df_codeid.id cid,group_concat(distinct ddomain) ddomain,count(distinct ccd) ccd from df_codeid group by id) df_codeid
 left join variable on cid = variable.id
 left join (
 select count(distinct modifier_cd) mod,id from obs_df

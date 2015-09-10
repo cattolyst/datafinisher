@@ -96,27 +96,27 @@ def main(cnx,fname,style,dtcp):
 
     # the CDID table maps concept codes (CCD) to variable id (ID) to 
     # data domain (DDOMAIN) to concept path (CPATH)
-    cnx.execute(par['cdid_tab'])
-    tprint("created cdid table",tt);tt = time.time()
+    cnx.execute(par['df_codeid_tab'])
+    tprint("created df_codeid table",tt);tt = time.time()
     
     # Now we will replace the EHR-specific concept paths simply with the most 
     # granular available standard concept code (so far only for ICD9 and LOINC)
     # TODO: more generic compression of terminal code-nodes (RXNorm, CPT, etc.)
 
     # diagnoses
-    cnx.execute("update cdid set cpath = grs('"+icd9grep+"',cpath) where ddomain like '%|DX_ID'")
+    cnx.execute("update df_codeid set cpath = grs('"+icd9grep+"',cpath) where ddomain like '%|DX_ID'")
     # TODO: the below might be more performant in current SQLite versions, might want to put it
     # back in after adding a version check
-    # cnx.execute("""update cdid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'ICD9'""")
-    cnx.execute("update cdid set cpath = replace(ccd,'ICD9:','') where ddomain = 'ICD9'")
+    # cnx.execute("""update df_codeid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'ICD9'""")
+    cnx.execute("update df_codeid set cpath = replace(ccd,'ICD9:','') where ddomain = 'ICD9'")
     # LOINC
-    cnx.execute("update cdid set cpath = grs('"+loincgrep+"',cpath) where ddomain like '%|COMPONENT_ID'")
+    cnx.execute("update df_codeid set cpath = grs('"+loincgrep+"',cpath) where ddomain like '%|COMPONENT_ID'")
     # LOINC nodes modified analogously to ICD9 nodes above
-    #cnx.execute("""update cdid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'LOINC'""")
-    cnx.execute("update cdid set cpath = replace(ccd,'LOINC:','') where ddomain = 'LOINC'")
-    cnx.execute("create UNIQUE INDEX if not exists df_ix_cdid ON cdid (id,cpath,ccd)")
+    #cnx.execute("""update df_codeid set cpath = substr(ccd,instr(ccd,':')+1) where ddomain = 'LOINC'""")
+    cnx.execute("update df_codeid set cpath = replace(ccd,'LOINC:','') where ddomain = 'LOINC'")
+    cnx.execute("create UNIQUE INDEX if not exists df_ix_df_codeid ON df_codeid (id,cpath,ccd)")
     cnx.commit()
-    tprint("mapped concept codes in cdid",tt);tt = time.time()
+    tprint("mapped concept codes in df_codeid",tt);tt = time.time()
     
     # The obs_df table may make most of the views unneccessary
     cnx.execute(par['obs_df'].format(rdst(dtcp)))
