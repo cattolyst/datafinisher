@@ -84,7 +84,7 @@ def main(cnx,fname,style,dtcp):
     if logged_execute(cnx, "select count(*) from modifier_dimension").fetchone()[0] == 0:
       print "modifier_dimension is empty, let's fill it"
       # we load our local fallback db
-      logged_execute(cnx, "attach './sql/datafinisher.db' as dfdb")
+      logged_execute(cnx, "attach '{0}/sql/datafinisher.db' as dfdb".format(cwd))
       # and copy from it into the input .db file's modifier_dimension
       logged_execute(cnx, "insert into modifier_dimension select * from dfdb.modifier_dimension")
       # and log that we did so
