@@ -166,19 +166,26 @@ def logged_execute(cnx, statement, comment=''):
     return cnx.execute(statement)
 
 def cleanup(cnx):
-    t_drop = ['df_codeid','codefacts','codemodfacts','diagfacts','loincfacts',\
-	      'fulloutput','fulloutput2','oneperdayfacts','df_joinme','unkfacts',\
-	      'unktemp','df_vars','create_dynsql','create_obsfact','df_rules','df_dtdict']
-    v_drop = ['obs_all','obs_diag_active','obs_diag_inactive','obs_labs','obs_noins','binoutput']
+    df_stuff = """select distinct name from sqlite_master where type='{0}' and name like 'df_%'"""
     print "Dropping views"
+    # below two lines still here for legacy reasons-- remove in a week or two
+    v_drop = ['obs_all','obs_diag_active','obs_diag_inactive','obs_labs','obs_noins','binoutput']
     [logged_execute(cnx,"drop view if exists "+ii) for ii in v_drop]
-    if len(logged_execute(cnx,"pragma table_info(create_dynsql)").fetchall()) >0:
+    [logged_execute(cnx,"drop view if exists "+ii[0]) for ii in \
+      logged_execute(cnx,df_stuff.format('view')).fetchall()]    
+    if len(logged_execute(cnx,"pragma table_info(df_dynsql)").fetchall()) >0:
       print "Dropping temporary tables"
-      # note that because we're relying on create_dynsql in order to find the temporary tables, 
-      # those have to be dropped before the persistent tables including create_dynsql get dropped
-      [logged_execute(cnx,ii[0]) for ii in logged_execute(cnx,"select distinct 'drop table if exists '||ttable from create_dynsql").fetchall()]
+      # note that because we're relying on df_dynsql in order to find the temporary tables, 
+      # those have to be dropped before the persistent tables including df_dynsql get dropped
+      [logged_execute(cnx,ii[0]) for ii in \
+	logged_execute(cnx,"select distinct 'drop table if exists '||ttable from df_dynsql").fetchall()]
     print "Dropping tables"
-    [logged_execute(cnx,"drop table if exists "+ii) for ii in t_drop]
+    [logged_execute(cnx,"drop table if exists "+ii[0]) for ii in \
+      logged_execute(cnx,df_stuff.format('table')).fetchall()]
+    print "Dropping indexes"
+    [logged_execute(cnx,"drop index if exists "+ii[0]) for ii in \
+      logged_execute(cnx,df_stuff.format('index')).fetchall()]
+    
     
 
 

@@ -186,17 +186,17 @@ def main(cnx,fname,style,dtcp):
     tprint("created fulloutput table",tt);tt = time.time()
 
     selbin_dynsql = logged_execute(cnx, par['selbin_dynsql']).fetchone()[0]
-    binoutqry = """create view binoutput as select patient_num,start_date,birth_date,sex_cd
+    binoutqry = """create view df_binoutput as select patient_num,start_date,birth_date,sex_cd
 		   ,language_cd,race_cd,age_at_visit_days,"""
     binoutqry += selbin_dynsql
     #binoutqry += ","+",".join([ii[1] for ii in logged_execute(cnx, "pragma table_info(loincfacts)").fetchall()[2:]])
     binoutqry += " from fulloutput"
-    logged_execute(cnx, "drop view if exists binoutput")
+    logged_execute(cnx, "drop view if exists df_binoutput")
     logged_execute(cnx, binoutqry)
-    tprint("created binoutput view",tt);tt = time.time()
+    tprint("created df_binoutput view",tt);tt = time.time()
 
     if style == 'simple':
-      finalview = 'binoutput'
+      finalview = 'df_binoutput'
     else:
       finalview = 'fulloutput'
       
